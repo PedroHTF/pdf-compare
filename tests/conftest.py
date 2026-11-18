@@ -55,7 +55,7 @@ def window(qtbot, tmp_path):
     from app.ui.main_window import MainWindow
 
     settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
-    w = MainWindow(settings=settings)
+    w = MainWindow(settings=settings, data_dir=tmp_path / "dados")
     w.notifications = []
     w._notify = lambda kind, title, text: w.notifications.append((kind, title, text))
     qtbot.addWidget(w)

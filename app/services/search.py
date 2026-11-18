@@ -57,13 +57,13 @@ def _matches(words: List[str], i: int, terms: List[str], whole_word: bool) -> bo
     return all(words[i + k] == terms[k] for k in range(1, n - 1))
 
 
-def hit_snippet(index: DocumentIndex, hit: Hit, context: int = 6, max_chars: int = 120) -> str:
+def hit_snippet(index: DocumentIndex, hit: Hit, before: int = 3, after: int = 7, max_chars: int = 120) -> str:
     """Trecho com a ocorrência entre colchetes: "… o [contrato] foi assinado …"."""
     if hit.word < 0 or hit.page >= len(index.pages):
         return ""
     words = [t.text for t in index.pages[hit.page]]
-    start = max(0, hit.word - context)
-    end = min(len(words), hit.word + hit.length + context)
+    start = max(0, hit.word - before)
+    end = min(len(words), hit.word + hit.length + after)
     before = " ".join(words[start:hit.word])
     match = " ".join(words[hit.word:hit.word + hit.length])
     after = " ".join(words[hit.word + hit.length:end])

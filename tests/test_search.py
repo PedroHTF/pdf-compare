@@ -90,6 +90,6 @@ def test_hit_snippet_shows_context(make_pdf):
     index = DocumentIndex.build(doc)
     doc.close()
     hit = search_index(index, "seis sete")[0]
-    assert hit_snippet(index, hit, context=2) == "… quatro cinco [seis sete] oito nove …"
+    assert hit_snippet(index, hit, before=2, after=2) == "… quatro cinco [seis sete] oito nove …"
     first = search_index(index, "um")[0]
-    assert hit_snippet(index, first, context=1) == "[um] dois …"
+    assert hit_snippet(index, first, before=1, after=1) == "[um] dois …"
