@@ -39,11 +39,15 @@ def clean(word: str) -> str:
 class Token:
     text: str
     rects: List[Rect]
+    line: int = 0   # identificador da linha na página (bloco e linha do PyMuPDF)
 
 
-def extract_tokens(page: fitz.Page) -> List[Token]:
-    """Extrai as palavras da página, juntando palavras hifenizadas no fim da linha."""
-    words = page.get_text("words")
+def extract_tokens(page: fitz.Page, textpage: "fitz.TextPage | None" = None) -> List[Token]:
+    """Extrai as palavras da página, juntando palavras hifenizadas no fim da linha.
+
+    `textpage` permite usar um texto já extraído (por exemplo, o resultado do OCR).
+    """
+    words = page.get_text("words", textpage=textpage) if textpage is not None else page.get_text("words")
     tokens: List[Token] = []
     carry: Token | None = None
 
@@ -59,12 +63,12 @@ def extract_tokens(page: fitz.Page) -> List[Token]:
         nxt = words[i + 1] if i + 1 < len(words) else None
         ends_line = nxt is None or (nxt[5], nxt[6]) != (block, line)
         if nxt is not None and ends_line and len(text) > 1 and text.endswith("-"):
-            carry = Token(text, rects)  # "docu-" + "mento" na linha seguinte
+            carry = Token(text, rects, block * 10000 + line)  # "docu-" + "mento" na linha seguinte
             continue
-        tokens.append(Token(clean(text), rects))
+        tokens.append(Token(clean(text), rects, block * 10000 + line))
 
     if carry is not None:
-        tokens.append(Token(clean(carry.text), carry.rects))
+        tokens.append(Token(clean(carry.text), carry.rects, carry.line))
     return tokens
 
 

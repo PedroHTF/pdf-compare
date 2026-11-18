@@ -1,0 +1,88 @@
+# Gera o executável, o instalador e o pacote portátil no Windows.
+# - Em pull requests e em execução manual: só confere que tudo é gerado (arquivos ficam em "Artifacts").
+# - Ao enviar uma tag vX.Y.Z: cria a Release no GitHub com os arquivos para download.
+name: Build e Release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Versão do programa
+        id: version
+        shell: pwsh
+        run: |
+          $v = (python -c "from app import __version__; print(__version__)").Trim()
+          if (-not $v) { throw "Não foi possível ler __version__ em app/__init__.py." }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne "v$v") {
+            throw "A tag $env:GITHUB_REF_NAME não bate com __version__ = $v (app/__init__.py)."
+          }
+
+      - name: Instalar dependências (versões do requirements-lock.txt)
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
+
+      - name: Testes e executável (build.ps1)
+        shell: pwsh
+        run: .\build.ps1
+
+      - name: Instalador (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          & $iscc "/DAppVersion=${{ steps.version.outputs.version }}" installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup falhou." }
+
+      - name: Pacote portátil e código-fonte
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item "dist\installer\PDFCompare-Setup-$v.exe" release\
+          Compress-Archive -Path dist\PDFCompare -DestinationPath "release\PDFCompare-$v-portable.zip"
+          Copy-Item "dist\PDFCompare\codigo-fonte-PDFCompare-$v.zip" release\
+          Get-ChildItem release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PDFCompare-${{ steps.version.outputs.version }}
+          path: release/*
+
+      - name: Publicar Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: PDF Compare ${{ steps.version.outputs.version }}
+          files: release/*
+          generate_release_notes: true
+          body: |
+            ## Download
+            - **PDFCompare-Setup-${{ steps.version.outputs.version }}.exe** — instalador para Windows (recomendado) / Windows installer (recommended)
+            - **PDFCompare-${{ steps.version.outputs.version }}-portable.zip** — versão portátil, sem instalação / portable, no installation
+            - **codigo-fonte-PDFCompare-${{ steps.version.outputs.version }}.zip** — código-fonte (AGPL-3.0) / source code
+
+            Na primeira execução o Windows SmartScreen pode avisar que o programa não é reconhecido: clique em **Mais informações › Executar assim mesmo**.
+            On first run, Windows SmartScreen may warn about an unrecognized app: click **More info › Run anyway**.
+
+            OCR (opcional): instale o [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki).
