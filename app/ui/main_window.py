@@ -3,6 +3,8 @@ anotações, comparação de texto, exportação, sessões e OCR."""
 
 from __future__ import annotations
 
+from app.i18n import LANGUAGES, language, tr
+
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence
 
@@ -76,7 +78,8 @@ S = QStyle.StandardPixmap
 
 
 def _plural(n: int, singular: str, plural: str) -> str:
-    return f"{n} {singular if n == 1 else plural}"
+    """Ex.: _plural(3, "{n} arquivo", "{n} arquivos") -> "3 arquivos" (traduzido)."""
+    return tr(singular if n == 1 else plural, n=n)
 
 
 def default_data_dir() -> Path:
@@ -148,81 +151,81 @@ class MainWindow(QMainWindow):
         return action
 
     def _create_actions(self) -> None:
-        self.act_add = self._action("&Adicionar PDFs…", self.open_dialog, ["Ctrl+O"],
-                                    "Adicionar PDFs à comparação", S.SP_DialogOpenButton)
-        self.act_open_folder = self._action("Abrir &pasta…", self.open_folder_dialog, ["Ctrl+Shift+O"],
-                                            "Abrir os PDFs de uma pasta (até 6, em ordem de nome)")
-        self.act_open_session = self._action("Abrir &sessão…", self.open_session_dialog, [],
-                                             "Reabrir um conjunto de PDFs salvo, com páginas e zoom")
-        self.act_save_session = self._action("&Salvar sessão…", self.save_session_dialog, ["Ctrl+S"],
-                                             "Salvar os PDFs abertos, as páginas e o zoom para reabrir depois")
-        self.act_export = self._action("&Exportar…", self.export_dialog, ["Ctrl+E"],
-                                       "Exportar a comparação ou as páginas atuais como PDF ou PNG")
-        self.act_close_all = self._action("&Fechar todos", self.close_all, ["Ctrl+Shift+W"],
-                                          "Fechar todos os PDFs", S.SP_DialogCloseButton)
-        self.act_quit = self._action("Sai&r", self.close, ["Ctrl+Q"], "Sair do programa")
+        self.act_add = self._action(tr("&Adicionar PDFs…"), self.open_dialog, ["Ctrl+O"],
+                                    tr("Adicionar PDFs à comparação"), S.SP_DialogOpenButton)
+        self.act_open_folder = self._action(tr("Abrir &pasta…"), self.open_folder_dialog, ["Ctrl+Shift+O"],
+                                            tr("Abrir os PDFs de uma pasta (até 6, em ordem de nome)"))
+        self.act_open_session = self._action(tr("Abrir &sessão…"), self.open_session_dialog, [],
+                                             tr("Reabrir um conjunto de PDFs salvo, com páginas e zoom"))
+        self.act_save_session = self._action(tr("&Salvar sessão…"), self.save_session_dialog, ["Ctrl+S"],
+                                             tr("Salvar os PDFs abertos, as páginas e o zoom para reabrir depois"))
+        self.act_export = self._action(tr("&Exportar…"), self.export_dialog, ["Ctrl+E"],
+                                       tr("Exportar a comparação ou as páginas atuais como PDF ou PNG"))
+        self.act_close_all = self._action(tr("&Fechar todos"), self.close_all, ["Ctrl+Shift+W"],
+                                          tr("Fechar todos os PDFs"), S.SP_DialogCloseButton)
+        self.act_quit = self._action(tr("Sai&r"), self.close, ["Ctrl+Q"], tr("Sair do programa"))
 
-        self.act_prev = self._action("Anterior", lambda: self.step(-1), ["Left", "PgUp"],
-                                     "Página anterior em todos os PDFs", S.SP_ArrowBack)
-        self.act_next = self._action("Próxima", lambda: self.step(+1), ["Right", "PgDown"],
-                                     "Próxima página em todos os PDFs", S.SP_ArrowForward)
-        self.act_first = self._action("Início", self.go_first, ["Ctrl+Home"],
-                                      "Ir para o início de todos os PDFs", S.SP_MediaSkipBackward)
-        self.act_last = self._action("Fim", self.go_last, ["Ctrl+End"],
-                                     "Ir para o fim de todos os PDFs", S.SP_MediaSkipForward)
-        self.act_realign = self._action("Realinhar", self.realign, ["Ctrl+L"],
-                                        "Desfazer ajustes individuais: todos voltam a mostrar a mesma página",
+        self.act_prev = self._action(tr("Anterior"), lambda: self.step(-1), ["Left", "PgUp"],
+                                     tr("Página anterior em todos os PDFs"), S.SP_ArrowBack)
+        self.act_next = self._action(tr("Próxima"), lambda: self.step(+1), ["Right", "PgDown"],
+                                     tr("Próxima página em todos os PDFs"), S.SP_ArrowForward)
+        self.act_first = self._action(tr("Início"), self.go_first, ["Ctrl+Home"],
+                                      tr("Ir para o início de todos os PDFs"), S.SP_MediaSkipBackward)
+        self.act_last = self._action(tr("Fim"), self.go_last, ["Ctrl+End"],
+                                     tr("Ir para o fim de todos os PDFs"), S.SP_MediaSkipForward)
+        self.act_realign = self._action(tr("Realinhar"), self.realign, ["Ctrl+L"],
+                                        tr("Desfazer ajustes individuais: todos voltam a mostrar a mesma página"),
                                         S.SP_BrowserReload)
 
-        self.act_find = self._action("&Pesquisar", self.focus_search, ["Ctrl+F"], "Pesquisar em todos os PDFs")
-        self.act_hit_next = self._action("Próxima ocorrência", lambda: self.next_hit_all(+1), ["F3"],
-                                         "Ir para a próxima ocorrência em cada PDF")
-        self.act_hit_prev = self._action("Ocorrência anterior", lambda: self.next_hit_all(-1), ["Shift+F3"],
-                                         "Ir para a ocorrência anterior em cada PDF")
+        self.act_find = self._action(tr("&Pesquisar"), self.focus_search, ["Ctrl+F"], tr("Pesquisar em todos os PDFs"))
+        self.act_hit_next = self._action(tr("Próxima ocorrência"), lambda: self.next_hit_all(+1), ["F3"],
+                                         tr("Ir para a próxima ocorrência em cada PDF"))
+        self.act_hit_prev = self._action(tr("Ocorrência anterior"), lambda: self.next_hit_all(-1), ["Shift+F3"],
+                                         tr("Ir para a ocorrência anterior em cada PDF"))
 
-        self.act_diff = self._action("Comparar &texto", self.toggle_diff, ["Ctrl+D"],
-                                     "Destacar as diferenças de texto em relação ao primeiro PDF",
+        self.act_diff = self._action(tr("Comparar &texto"), self.toggle_diff, ["Ctrl+D"],
+                                     tr("Destacar as diferenças de texto em relação ao primeiro PDF"),
                                      checkable=True)
-        self.act_diff_next = self._action("Próxima diferença", lambda: self.next_diff_all(+1), ["F7"],
-                                          "Ir para a próxima diferença de texto em cada PDF")
-        self.act_diff_prev = self._action("Diferença anterior", lambda: self.next_diff_all(-1), ["Shift+F7"],
-                                          "Ir para a diferença de texto anterior em cada PDF")
+        self.act_diff_next = self._action(tr("Próxima diferença"), lambda: self.next_diff_all(+1), ["F7"],
+                                          tr("Ir para a próxima diferença de texto em cada PDF"))
+        self.act_diff_prev = self._action(tr("Diferença anterior"), lambda: self.next_diff_all(-1), ["Shift+F7"],
+                                          tr("Ir para a diferença de texto anterior em cada PDF"))
 
-        self.act_highlight = self._action("&Destacar texto", lambda: self.toggle_tool(TOOL_HIGHLIGHT), ["Ctrl+H"],
-                                          "Arraste sobre o texto para destacá-lo", checkable=True)
-        self.act_note = self._action("Adicionar &nota", lambda: self.toggle_tool(TOOL_NOTE), ["Ctrl+M"],
-                                     "Clique na página para adicionar uma nota", checkable=True)
-        self.act_highlight.setIconText("Destacar")
-        self.act_note.setIconText("Nota")
+        self.act_highlight = self._action(tr("&Destacar texto"), lambda: self.toggle_tool(TOOL_HIGHLIGHT), ["Ctrl+H"],
+                                          tr("Arraste sobre o texto para destacá-lo"), checkable=True)
+        self.act_note = self._action(tr("Adicionar &nota"), lambda: self.toggle_tool(TOOL_NOTE), ["Ctrl+M"],
+                                     tr("Clique na página para adicionar uma nota"), checkable=True)
+        self.act_highlight.setIconText(tr("Destacar"))
+        self.act_note.setIconText(tr("Nota"))
 
-        self.act_ocr = self._action("Reconhecer texto em PDFs escaneados (&OCR)", self.toggle_ocr, [],
-                                    "Usa o Tesseract OCR, se instalado, para pesquisar e comparar PDFs escaneados",
+        self.act_ocr = self._action(tr("Reconhecer texto em PDFs escaneados (&OCR)"), self.toggle_ocr, [],
+                                    tr("Usa o Tesseract OCR, se instalado, para pesquisar e comparar PDFs escaneados"),
                                     checkable=True)
-        self.act_ocr_language = self._action("&Idioma do OCR…", self.choose_ocr_language)
+        self.act_ocr_language = self._action(tr("&Idioma do OCR…"), self.choose_ocr_language)
 
-        self.act_fit_width = self._action("Ajustar à &largura", lambda: self.set_zoom(FIT_WIDTH), ["Ctrl+0"])
-        self.act_fit_page = self._action("&Página inteira", lambda: self.set_zoom(FIT_PAGE), ["Ctrl+9"])
-        self.act_zoom_in = self._action("&Aumentar zoom", lambda: self.zoom_by(+1), ["Ctrl++", "Ctrl+="])
-        self.act_zoom_out = self._action("&Diminuir zoom", lambda: self.zoom_by(-1), ["Ctrl+-"])
+        self.act_fit_width = self._action(tr("Ajustar à &largura"), lambda: self.set_zoom(FIT_WIDTH), ["Ctrl+0"])
+        self.act_fit_page = self._action(tr("&Página inteira"), lambda: self.set_zoom(FIT_PAGE), ["Ctrl+9"])
+        self.act_zoom_in = self._action(tr("&Aumentar zoom"), lambda: self.zoom_by(+1), ["Ctrl++", "Ctrl+="])
+        self.act_zoom_out = self._action(tr("&Diminuir zoom"), lambda: self.zoom_by(-1), ["Ctrl+-"])
         self.act_zoom_in.setIconText("+")
         self.act_zoom_out.setIconText("−")
 
         self.act_linked_scroll = self._action(
-            "Rolagem &vinculada", self._save_view_settings, [],
-            "Ao rolar a página de um PDF, os outros acompanham", checkable=True,
+            tr("Rolagem &vinculada"), self._save_view_settings, [],
+            tr("Ao rolar a página de um PDF, os outros acompanham"), checkable=True,
         )
         self.act_linked_scroll.setChecked(self._bool_setting("view/linked_scroll", True))
 
-        self.act_shortcuts = self._action("&Atalhos de teclado", self.show_shortcuts, ["F1"])
-        self.act_license = self._action("&Licença e créditos…", self.show_license,
-                                        tip="O que você pode fazer com este programa e licenças dos componentes")
-        self.act_about = self._action("&Sobre", self.show_about)
+        self.act_shortcuts = self._action(tr("&Atalhos de teclado"), self.show_shortcuts, ["F1"])
+        self.act_license = self._action(tr("&Licença e créditos…"), self.show_license,
+                                        tip=tr("O que você pode fazer com este programa e licenças dos componentes"))
+        self.act_about = self._action(tr("&Sobre"), self.show_about)
 
     def _create_menus(self) -> None:
         bar = self.menuBar()
-        m = bar.addMenu("&Arquivo")
+        m = bar.addMenu(tr("&Arquivo"))
         m.addActions([self.act_add, self.act_open_folder])
-        self.recent_menu = m.addMenu("Abertos &recentemente")
+        self.recent_menu = m.addMenu(tr("Abertos &recentemente"))
         self.recent_menu.aboutToShow.connect(self._fill_recent_menu)
         m.addSeparator()
         m.addActions([self.act_open_session, self.act_save_session])
@@ -233,7 +236,7 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         m.addAction(self.act_quit)
 
-        m = bar.addMenu("&Navegar")
+        m = bar.addMenu(tr("&Navegar"))
         m.addActions([self.act_prev, self.act_next, self.act_first, self.act_last])
         m.addSeparator()
         m.addAction(self.act_realign)
@@ -242,24 +245,32 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         m.addActions([self.act_diff_next, self.act_diff_prev])
 
-        m = bar.addMenu("&Exibir")
+        m = bar.addMenu(tr("&Exibir"))
         m.addActions([self.act_fit_width, self.act_fit_page, self.act_zoom_in, self.act_zoom_out])
         m.addSeparator()
         m.addAction(self.act_linked_scroll)
         self.view_menu = m
 
-        m = bar.addMenu("&Ferramentas")
+        m = bar.addMenu(tr("&Ferramentas"))
         m.addActions([self.act_highlight, self.act_note])
         m.addSeparator()
         m.addAction(self.act_diff)
         m.addSeparator()
         m.addActions([self.act_ocr, self.act_ocr_language])
 
-        m = bar.addMenu("A&juda")
+        self.language_menu = m.addMenu("Idioma / &Language")
+        for code, label in LANGUAGES.items():
+            action = self.language_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(code == language())
+            action.setData(code)
+            action.triggered.connect(lambda _c=False, c=code: self.set_ui_language(c))
+
+        m = bar.addMenu(tr("A&juda"))
         m.addActions([self.act_shortcuts, self.act_license, self.act_about])
 
     def _create_toolbars(self) -> None:
-        tb = QToolBar("Barra principal")
+        tb = QToolBar(tr("Barra principal"))
         tb.setObjectName("mainToolbar")
         tb.setMovable(False)
         tb.setIconSize(QSize(18, 18))
@@ -274,10 +285,10 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
         tb.addAction(self.act_zoom_out)
         self.zoom_combo = QComboBox()
-        self.zoom_combo.setToolTip("Zoom de todos os PDFs (Ctrl + roda do mouse)")
+        self.zoom_combo.setToolTip(tr("Zoom de todos os PDFs (Ctrl + roda do mouse)"))
         self.zoom_combo.setAccessibleName("Zoom")
-        self.zoom_combo.addItem("Ajustar à largura", FIT_WIDTH)
-        self.zoom_combo.addItem("Página inteira", FIT_PAGE)
+        self.zoom_combo.addItem(tr("Ajustar à largura"), FIT_WIDTH)
+        self.zoom_combo.addItem(tr("Página inteira"), FIT_PAGE)
         for z in ZOOM_PRESETS:
             self.zoom_combo.addItem(f"{round(z * 100)}%", z)
         self.zoom_combo.currentIndexChanged.connect(
@@ -293,7 +304,7 @@ class MainWindow(QMainWindow):
         tb.addAction(self.act_export)
 
         self.addToolBarBreak()
-        stb = QToolBar("Pesquisa")
+        stb = QToolBar(tr("Pesquisa"))
         stb.setObjectName("searchToolbar")
         stb.setMovable(False)
         self.search_bar = SearchBar()
@@ -310,9 +321,9 @@ class MainWindow(QMainWindow):
 
     def _create_central(self) -> None:
         self.empty_view = DropZone(
-            "Arraste seus PDFs para cá",
-            "Compare de 2 a 6 documentos lado a lado, pesquise em todos ao mesmo tempo\n"
-            "e avance página por página — em todos juntos ou em cada um separadamente.",
+            tr("Arraste seus PDFs para cá"),
+            tr("Compare de 2 a 6 documentos lado a lado, pesquise em todos ao mesmo tempo\n"
+            "e avance página por página — em todos juntos ou em cada um separadamente."),
             pixmap=logo_pixmap(96),
         )
         self.empty_view.open_requested.connect(self.open_dialog)
@@ -334,16 +345,16 @@ class MainWindow(QMainWindow):
     def _create_results_dock(self) -> None:
         self.results_panel = ResultsPanel()
         self.results_panel.hit_activated.connect(self.go_to_hit)
-        self.results_dock = QDockWidget("Ocorrências", self)
+        self.results_dock = QDockWidget(tr("Ocorrências"), self)
         self.results_dock.setObjectName("resultsDock")
         self.results_dock.setWidget(self.results_panel)
         self.results_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.results_dock)
         self.results_dock.setVisible(self._bool_setting("view/results_panel", False))
         self.act_results = self.results_dock.toggleViewAction()
-        self.act_results.setText("Lista de &ocorrências")
+        self.act_results.setText(tr("Lista de &ocorrências"))
         self.act_results.setShortcut(QKeySequence("Ctrl+Shift+F"))
-        self.act_results.setToolTip("Mostrar a lista de ocorrências da pesquisa (Ctrl+Shift+F)")
+        self.act_results.setToolTip(tr("Mostrar a lista de ocorrências da pesquisa (Ctrl+Shift+F)"))
         self.addAction(self.act_results)
         self.view_menu.addSeparator()
         self.view_menu.addAction(self.act_results)
@@ -354,7 +365,7 @@ class MainWindow(QMainWindow):
 
         button = QToolButton()
         button.setDefaultAction(self.act_results)
-        button.setText("Lista")
+        button.setText(tr("Lista"))
         return button
 
     def _create_status_bar(self) -> None:
@@ -367,7 +378,7 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.diff_label)
         self.progress = QProgressBar()
         self.progress.setMaximumWidth(240)
-        self.progress.setFormat("Preparando pesquisa… %p%")
+        self.progress.setFormat(tr("Preparando pesquisa… %p%"))
         self.progress.hide()
         self.statusBar().addPermanentWidget(self.progress)
 
@@ -376,10 +387,10 @@ class MainWindow(QMainWindow):
     # ======================================================================
     def open_dialog(self) -> None:
         if len(self.sessions) >= MAX_DOCUMENTS:
-            self._notify("info", "Limite atingido", f"Já há {MAX_DOCUMENTS} PDFs abertos. Feche um para adicionar outro.")
+            self._notify("info", tr("Limite atingido"), tr("Já há {n} PDFs abertos. Feche um para adicionar outro.", n=MAX_DOCUMENTS))
             return
         start_dir = str(self.settings.value("files/last_dir", ""))
-        paths, _ = QFileDialog.getOpenFileNames(self, "Adicionar PDFs", start_dir, "Documentos PDF (*.pdf)")
+        paths, _ = QFileDialog.getOpenFileNames(self, tr("Adicionar PDFs"), start_dir, tr("Documentos PDF (*.pdf)"))
         if paths:
             self.settings.setValue("files/last_dir", str(Path(paths[0]).parent))
             self.add_files(paths)
@@ -406,7 +417,7 @@ class MainWindow(QMainWindow):
                 opened.append(session)
         if cancelled:
             self.statusBar().showMessage(
-                f"Não aberto (senha não informada): {', '.join(cancelled)}", 6000
+                tr("Não aberto (senha não informada): {names}", names=", ".join(cancelled)), 6000
             )
 
         if opened:
@@ -424,11 +435,11 @@ class MainWindow(QMainWindow):
         problems: List[str] = list(errors)
         if over_limit:
             names = ", ".join(p.name for p in over_limit)
-            problems.append(f"Limite de {MAX_DOCUMENTS} PDFs: não foram abertos — {names}.")
+            problems.append(tr("Limite de {n} PDFs: não foram abertos — {names}.", n=MAX_DOCUMENTS, names=names))
         if ignored_type:
-            problems.append(f"{_plural(ignored_type, 'arquivo ignorado', 'arquivos ignorados')} por não ser PDF.")
+            problems.append(_plural(ignored_type, "{n} arquivo ignorado por não ser PDF.", "{n} arquivos ignorados por não serem PDF."))
         if problems:
-            self._notify("warning", "Alguns arquivos não foram abertos", "\n\n".join(problems))
+            self._notify("warning", tr("Alguns arquivos não foram abertos"), "\n\n".join(problems))
         self._update_ui_state()
 
     def _open_document(self, path: Path) -> Optional[DocumentSession]:
@@ -450,23 +461,23 @@ class MainWindow(QMainWindow):
             except WrongPassword:
                 continue
         raise PdfOpenError(
-            f"Senha incorreta para “{path.name}” ({MAX_PASSWORD_ATTEMPTS} tentativas). "
-            "Abra o arquivo de novo para tentar outra vez."
+            tr("Senha incorreta para “{name}” ({n} tentativas). Abra o arquivo de novo para tentar outra vez.",
+               name=path.name, n=MAX_PASSWORD_ATTEMPTS)
         )
 
     def _ask_password(self, name: str, attempt: int) -> Optional[str]:
         """Pede a senha ao usuário. Devolve None se ele cancelar."""
         if attempt == 1:
-            label = f"“{name}” está protegido por senha.\n\nDigite a senha para abri-lo:"
+            label = tr("“{name}” está protegido por senha.\n\nDigite a senha para abri-lo:", name=name)
         else:
-            label = (f"Senha incorreta. Tente novamente "
-                     f"(tentativa {attempt} de {MAX_PASSWORD_ATTEMPTS}).\n\nSenha de “{name}”:")
+            label = tr("Senha incorreta. Tente novamente (tentativa {attempt} de {total}).\n\nSenha de “{name}”:",
+                       attempt=attempt, total=MAX_PASSWORD_ATTEMPTS, name=name)
         dialog = QInputDialog(self)
-        dialog.setWindowTitle("PDF protegido")
+        dialog.setWindowTitle(tr("PDF protegido"))
         dialog.setLabelText(label)
         dialog.setTextEchoMode(QLineEdit.EchoMode.Password)
-        dialog.setOkButtonText("Abrir")
-        dialog.setCancelButtonText("Pular este arquivo")
+        dialog.setOkButtonText(tr("Abrir"))
+        dialog.setCancelButtonText(tr("Pular este arquivo"))
         dialog.resize(420, dialog.sizeHint().height())
         if dialog.exec() != QInputDialog.DialogCode.Accepted:
             return None
@@ -527,7 +538,7 @@ class MainWindow(QMainWindow):
             self.panes.append(pane)
             self.grid.addWidget(pane, i // cols, i % cols)
         if n == 1:
-            add_zone = DropZone("Adicione outro PDF", "para comparar lado a lado", "Adicionar PDF…", compact=True)
+            add_zone = DropZone(tr("Adicione outro PDF"), tr("para comparar lado a lado"), tr("Adicionar PDF…"), compact=True)
             add_zone.open_requested.connect(self.open_dialog)
             self.grid.addWidget(add_zone, 0, 1)
         for c in range(cols):
@@ -558,7 +569,7 @@ class MainWindow(QMainWindow):
         if self.sessions:
             self.nav.realign()
             self.refresh()
-            self.statusBar().showMessage("Todos os PDFs realinhados na mesma página.", 3000)
+            self.statusBar().showMessage(tr("Todos os PDFs realinhados na mesma página."), 3000)
 
     def _on_pane_step(self, index: int, delta: int) -> None:
         self.nav.step_pane(index, delta)
@@ -628,13 +639,14 @@ class MainWindow(QMainWindow):
         total = self.nav.total_hits
         docs = sum(1 for r in results if r)
         if total:
-            text = (f"{_plural(total, 'ocorrência', 'ocorrências')} em {docs} de "
-                    f"{_plural(len(self.sessions), 'PDF', 'PDFs')} — Enter vai para a próxima")
+            text = tr("{hits} em {docs} de {total} — Enter vai para a próxima",
+                      hits=_plural(total, "{n} ocorrência", "{n} ocorrências"), docs=docs,
+                      total=_plural(len(self.sessions), "{n} PDF", "{n} PDFs"))
             state = "found"
         else:
-            text, state = "Nenhuma ocorrência encontrada", "notfound"
+            text, state = tr("Nenhuma ocorrência encontrada"), "notfound"
         if pending:
-            text += " · ainda lendo o texto dos PDFs…"
+            text += tr(" · ainda lendo o texto dos PDFs…")
             state = "found" if total else ""
         self.search_bar.set_summary(text, state)
         self.refresh()
@@ -648,7 +660,7 @@ class MainWindow(QMainWindow):
         if self.nav.step_hit_all(delta):
             self.refresh()
         else:
-            self.statusBar().showMessage("Nenhuma ocorrência para navegar.", 3000)
+            self.statusBar().showMessage(tr("Nenhuma ocorrência para navegar."), 3000)
 
     def _fill_results(self, query: str) -> None:
         results = []
@@ -759,12 +771,12 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{names} — {APP_NAME}" if names else APP_NAME)
 
         if not has:
-            hint = "Abra ou arraste de 2 a 6 PDFs para começar  (Ctrl+O)"
+            hint = tr("Abra ou arraste de 2 a 6 PDFs para começar  (Ctrl+O)")
         elif n == 1:
-            hint = "Adicione pelo menos mais um PDF para comparar."
+            hint = tr("Adicione pelo menos mais um PDF para comparar.")
         else:
-            hint = ("◀ ▶ ou setas do teclado: avançam todos juntos  ·  "
-                    "botões de cada painel: ajustam só aquele PDF  ·  Ctrl+F: pesquisar em todos")
+            hint = (tr("◀ ▶ ou setas do teclado: avançam todos juntos  ·  "
+                    "botões de cada painel: ajustam só aquele PDF  ·  Ctrl+F: pesquisar em todos"))
         self.hint_label.setText(hint)
 
     # ======================================================================
@@ -778,49 +790,49 @@ class MainWindow(QMainWindow):
 
     def show_shortcuts(self) -> None:
         rows = [
-            ("Ctrl+O", "Adicionar PDFs (ou arraste os arquivos para a janela)"),
-            ("Ctrl+Shift+O", "Abrir todos os PDFs de uma pasta"),
-            ("Ctrl+S", "Salvar sessão (PDFs, páginas e zoom)"),
-            ("Ctrl+E", "Exportar comparação ou páginas atuais (PDF/PNG)"),
-            ("→ / Page Down", "Próxima página em todos os PDFs"),
-            ("← / Page Up", "Página anterior em todos os PDFs"),
-            ("Ctrl+Home / Ctrl+End", "Início / fim de todos os PDFs"),
-            ("Ctrl+L", "Realinhar: todos na mesma página"),
-            ("Ctrl+F", "Pesquisar em todos os PDFs"),
-            ("Enter / F3", "Próxima ocorrência em cada PDF"),
-            ("Shift+Enter / Shift+F3", "Ocorrência anterior em cada PDF"),
-            ("Ctrl+Shift+F", "Mostrar/ocultar a lista de ocorrências"),
-            ("Esc", "Limpar a pesquisa (com o cursor na caixa de pesquisa)"),
-            ("Ctrl+D", "Comparar texto: destacar diferenças em relação ao 1º PDF"),
-            ("F7 / Shift+F7", "Próxima / anterior diferença de texto em cada PDF"),
-            ("Ctrl+H", "Destacar texto (arraste sobre o texto)"),
-            ("Ctrl+M", "Adicionar nota (clique na página)"),
-            ("Botão direito", "Editar ou remover a anotação sob o cursor"),
-            ("Ctrl + roda do mouse", "Zoom"),
-            ("Ctrl++ / Ctrl+-", "Aumentar / diminuir zoom"),
-            ("Ctrl+0 / Ctrl+9", "Ajustar à largura / página inteira"),
+            ("Ctrl+O", tr("Adicionar PDFs (ou arraste os arquivos para a janela)")),
+            ("Ctrl+Shift+O", tr("Abrir todos os PDFs de uma pasta")),
+            ("Ctrl+S", tr("Salvar sessão (PDFs, páginas e zoom)")),
+            ("Ctrl+E", tr("Exportar comparação ou páginas atuais (PDF/PNG)")),
+            ("→ / Page Down", tr("Próxima página em todos os PDFs")),
+            ("← / Page Up", tr("Página anterior em todos os PDFs")),
+            ("Ctrl+Home / Ctrl+End", tr("Início / fim de todos os PDFs")),
+            ("Ctrl+L", tr("Realinhar: todos na mesma página")),
+            ("Ctrl+F", tr("Pesquisar em todos os PDFs")),
+            ("Enter / F3", tr("Próxima ocorrência em cada PDF")),
+            ("Shift+Enter / Shift+F3", tr("Ocorrência anterior em cada PDF")),
+            ("Ctrl+Shift+F", tr("Mostrar/ocultar a lista de ocorrências")),
+            ("Esc", tr("Limpar a pesquisa (com o cursor na caixa de pesquisa)")),
+            ("Ctrl+D", tr("Comparar texto: destacar diferenças em relação ao 1º PDF")),
+            ("F7 / Shift+F7", tr("Próxima / anterior diferença de texto em cada PDF")),
+            ("Ctrl+H", tr("Destacar texto (arraste sobre o texto)")),
+            ("Ctrl+M", tr("Adicionar nota (clique na página)")),
+            (tr("Botão direito"), tr("Editar ou remover a anotação sob o cursor")),
+            (tr("Ctrl + roda do mouse"), "Zoom"),
+            ("Ctrl++ / Ctrl+-", tr("Aumentar / diminuir zoom")),
+            ("Ctrl+0 / Ctrl+9", tr("Ajustar à largura / página inteira")),
         ]
         table = "".join(f"<tr><td style='padding:2px 16px 2px 0'><b>{k}</b></td><td>{v}</td></tr>" for k, v in rows)
-        extra = ("<p>Em cada painel: <b>◀ ▶</b> mudam só aquele PDF, <b>▲ ▼</b> navegam pelas "
+        extra = (tr("<p>Em cada painel: <b>◀ ▶</b> mudam só aquele PDF, <b>▲ ▼</b> navegam pelas "
                  "ocorrências dele e o campo de página permite digitar o número.</p>"
                  "<p>Comparar texto: <span style='background:#cdeccd'>verde</span> = incluído, "
                  "<span style='background:#f6c9c4'>vermelho</span> = removido, "
-                 "<span style='background:#cfdffb'>azul</span> = alterado.</p>")
-        QMessageBox.information(self, "Atalhos de teclado", f"<table>{table}</table>{extra}")
+                 "<span style='background:#cfdffb'>azul</span> = alterado.</p>"))
+        QMessageBox.information(self, tr("Atalhos de teclado"), f"<table>{table}</table>{extra}")
 
     def show_about(self) -> None:
         box = QMessageBox(self)
-        box.setWindowTitle(f"Sobre o {APP_NAME}")
+        box.setWindowTitle(tr("Sobre o {app}", app=APP_NAME))
         box.setIconPixmap(logo_pixmap(72))
         box.setText(
-            f"<h3>{APP_NAME} {__version__}</h3>"
-            "<p>Compare de 2 a 6 PDFs lado a lado, com pesquisa simultânea "
+            f"<h3>{APP_NAME} {__version__}</h3>" +
+            tr("<p>Compare de 2 a 6 PDFs lado a lado, com pesquisa simultânea "
             "e navegação página a página.</p>"
-            "<p>Os arquivos são processados apenas neste computador.</p>"
-            f"<p>{__copyright__}<br>Software livre sob a licença GNU AGPL v3.<br>"
-            f'Código-fonte: <a href="{__url__}">{__url__}</a></p>'
+            "<p>Os arquivos são processados apenas neste computador.</p>")
+            + tr('<p>{copyright}<br>Software livre sob a licença GNU AGPL v3.<br>'
+                 'Código-fonte: <a href="{url}">{url}</a></p>', copyright=__copyright__, url=__url__)
         )
-        btn_license = box.addButton("Licença e créditos…", QMessageBox.ButtonRole.ActionRole)
+        btn_license = box.addButton(tr("Licença e créditos…"), QMessageBox.ButtonRole.ActionRole)
         box.addButton(QMessageBox.StandardButton.Close)
         box.exec()
         if box.clickedButton() is btn_license:
@@ -858,7 +870,7 @@ class MainWindow(QMainWindow):
     def dragEnterEvent(self, event) -> None:  # noqa: N802
         if self._pdf_paths(event.mimeData()):
             event.acceptProposedAction()
-            self.statusBar().showMessage("Solte para adicionar os PDFs à comparação.")
+            self.statusBar().showMessage(tr("Solte para adicionar os PDFs à comparação."))
 
     def dragMoveEvent(self, event) -> None:  # noqa: N802
         if self._pdf_paths(event.mimeData()):
@@ -876,11 +888,27 @@ class MainWindow(QMainWindow):
             self.add_files(paths)
 
     # ======================================================================
+    # Idioma da interface
+    # ======================================================================
+    def set_ui_language(self, code: str) -> None:
+        """Guarda o idioma escolhido; ele vale a partir da próxima abertura do programa."""
+        for action in self.language_menu.actions():
+            action.setChecked(action.data() == code)
+        if str(self.settings.value("app/language", language())) == code and code == language():
+            return
+        self.settings.setValue("app/language", code)
+        if code == language():
+            return
+        self._notify("info", "PDF Compare",
+                     "Reinicie o programa para usar o novo idioma."
+                     if code == "pt" else "Restart the program to use the new language.")
+
+    # ======================================================================
     # Pasta, recentes e sessões
     # ======================================================================
     def open_folder_dialog(self) -> None:
         start_dir = str(self.settings.value("files/last_dir", ""))
-        folder = QFileDialog.getExistingDirectory(self, "Abrir os PDFs de uma pasta", start_dir)
+        folder = QFileDialog.getExistingDirectory(self, tr("Abrir os PDFs de uma pasta"), start_dir)
         if folder:
             self.settings.setValue("files/last_dir", folder)
             self.open_folder(folder)
@@ -888,7 +916,7 @@ class MainWindow(QMainWindow):
     def open_folder(self, folder) -> None:
         pdfs = pdfs_in_folder(folder)
         if not pdfs:
-            self._notify("info", "Nenhum PDF", f"Não há arquivos PDF em “{Path(folder).name or folder}”.")
+            self._notify("info", tr("Nenhum PDF"), tr("Não há arquivos PDF em “{name}”.", name=Path(folder).name or folder))
             return
         self.add_files(pdfs)
 
@@ -909,17 +937,17 @@ class MainWindow(QMainWindow):
             empty.setEnabled(False)
             return
         for path in items:
-            label = Path(path).name + ("  (sessão)" if path.lower().endswith(SESSION_SUFFIX) else "")
+            label = Path(path).name + (tr("  (sessão)") if path.lower().endswith(SESSION_SUFFIX) else "")
             action = self.recent_menu.addAction(label)
             action.setToolTip(path)
             action.setStatusTip(path)
             action.triggered.connect(lambda _c=False, p=path: self.open_recent(p))
         self.recent_menu.addSeparator()
-        self.recent_menu.addAction("Limpar lista", lambda: self.settings.setValue("files/recent", []))
+        self.recent_menu.addAction(tr("Limpar lista"), lambda: self.settings.setValue("files/recent", []))
 
     def open_recent(self, path: str) -> None:
         if not Path(path).exists():
-            self._notify("warning", "Arquivo não encontrado", f"“{path}” não existe mais.")
+            self._notify("warning", tr("Arquivo não encontrado"), tr("“{path}” não existe mais.", path=path))
             return
         if path.lower().endswith(SESSION_SUFFIX):
             self.open_session(path)
@@ -930,8 +958,8 @@ class MainWindow(QMainWindow):
         if not self.sessions:
             return
         start = str(Path(str(self.settings.value("files/last_dir", ""))) / f"comparacao{SESSION_SUFFIX}")
-        path, _ = QFileDialog.getSaveFileName(self, "Salvar sessão", start,
-                                              f"Sessão do PDF Compare (*{SESSION_SUFFIX})")
+        path, _ = QFileDialog.getSaveFileName(self, tr("Salvar sessão"), start,
+                                              tr("Sessão do PDF Compare (*{suffix})", suffix=SESSION_SUFFIX))
         if path:
             self.save_session_to(path)
 
@@ -940,16 +968,16 @@ class MainWindow(QMainWindow):
         try:
             saved = save_session(path, data)
         except SessionError as exc:
-            self._notify("warning", "Sessão não salva", str(exc))
+            self._notify("warning", tr("Sessão não salva"), str(exc))
             return None
         self._remember(saved)
-        self.statusBar().showMessage(f"Sessão salva em “{saved.name}”.", 4000)
+        self.statusBar().showMessage(tr("Sessão salva em “{name}”.", name=saved.name), 4000)
         return saved
 
     def open_session_dialog(self) -> None:
         start_dir = str(self.settings.value("files/last_dir", ""))
-        path, _ = QFileDialog.getOpenFileName(self, "Abrir sessão", start_dir,
-                                              f"Sessão do PDF Compare (*{SESSION_SUFFIX})")
+        path, _ = QFileDialog.getOpenFileName(self, tr("Abrir sessão"), start_dir,
+                                              tr("Sessão do PDF Compare (*{suffix})", suffix=SESSION_SUFFIX))
         if path:
             self.open_session(path)
 
@@ -957,7 +985,7 @@ class MainWindow(QMainWindow):
         try:
             data, missing = load_session(path)
         except SessionError as exc:
-            self._notify("warning", "Sessão não aberta", str(exc))
+            self._notify("warning", tr("Sessão não aberta"), str(exc))
             return
         self.close_all()
         self.add_files([f.path for f in data.files])
@@ -974,8 +1002,8 @@ class MainWindow(QMainWindow):
         self.update_diff()
         self._remember(path)
         if missing:
-            self._notify("warning", "Arquivos não encontrados",
-                         "Estes PDFs da sessão não foram encontrados:\n" + "\n".join(missing))
+            self._notify("warning", tr("Arquivos não encontrados"),
+                         tr("Estes PDFs da sessão não foram encontrados:\n") + "\n".join(missing))
 
     # ======================================================================
     # Anotações
@@ -990,9 +1018,9 @@ class MainWindow(QMainWindow):
         for pane in self.panes:
             pane.set_tool(tool)
         if tool == TOOL_HIGHLIGHT:
-            self.statusBar().showMessage("Destacar: arraste sobre o texto. Ctrl+H de novo para sair.", 5000)
+            self.statusBar().showMessage(tr("Destacar: arraste sobre o texto. Ctrl+H de novo para sair."), 5000)
         elif tool == TOOL_NOTE:
-            self.statusBar().showMessage("Nota: clique no ponto da página. Ctrl+M de novo para sair.", 5000)
+            self.statusBar().showMessage(tr("Nota: clique no ponto da página. Ctrl+M de novo para sair."), 5000)
 
     def annotation_key(self, index: int) -> Optional[str]:
         session = self.sessions[index]
@@ -1013,12 +1041,12 @@ class MainWindow(QMainWindow):
     def add_annotation(self, index: int, annotation: Annotation) -> bool:
         key = self.annotation_key(index)
         if key is None:
-            self._notify("warning", "Anotação não salva", "Não foi possível ler o arquivo para guardar a anotação.")
+            self._notify("warning", tr("Anotação não salva"), tr("Não foi possível ler o arquivo para guardar a anotação."))
             return False
         try:
             self.annotations.add(key, annotation, self.sessions[index].name)
         except OSError as exc:
-            self._notify("warning", "Anotação não salva", f"Não foi possível gravar a anotação: {exc}")
+            self._notify("warning", tr("Anotação não salva"), tr("Não foi possível gravar a anotação: {error}", error=exc))
             return False
         self.refresh()
         return True
@@ -1028,7 +1056,7 @@ class MainWindow(QMainWindow):
         rects = words_in_rect(session.doc[page], rect)
         if not rects:
             if abs(rect[2] - rect[0]) < 4 or abs(rect[3] - rect[1]) < 4:
-                self.statusBar().showMessage("Arraste sobre o texto que deseja destacar.", 4000)
+                self.statusBar().showMessage(tr("Arraste sobre o texto que deseja destacar."), 4000)
                 return
             rects = [rect]   # área sem texto (imagem, PDF escaneado): destaca a área
         self.add_annotation(index, Annotation(HIGHLIGHT, page, rects))
@@ -1041,7 +1069,7 @@ class MainWindow(QMainWindow):
         self.add_annotation(index, Annotation(NOTE, page, [note_rect(x - half, y - half)], text))
 
     def _ask_note_text(self, initial: str) -> Optional[str]:
-        text, ok = QInputDialog.getMultiLineText(self, "Nota", "Texto da nota:", initial)
+        text, ok = QInputDialog.getMultiLineText(self, tr("Nota"), tr("Texto da nota:"), initial)
         return text if ok else None
 
     def _on_annotation_menu(self, index: int, page: int, x: float, y: float, global_pos: QPoint) -> None:
@@ -1049,8 +1077,8 @@ class MainWindow(QMainWindow):
         if found is None:
             return
         menu = QMenu(self)
-        edit = menu.addAction("Editar texto da nota…" if found.kind == NOTE else "Adicionar comentário…")
-        remove = menu.addAction("Remover anotação")
+        edit = menu.addAction(tr("Editar texto da nota…") if found.kind == NOTE else tr("Adicionar comentário…"))
+        remove = menu.addAction(tr("Remover anotação"))
         chosen = menu.exec(global_pos)
         if chosen is edit:
             self.edit_annotation(index, found.id)
@@ -1089,7 +1117,7 @@ class MainWindow(QMainWindow):
         indexes = [self.indexer.index_for(s) for s in self.sessions]
         if any(i is None or not i.complete for i in indexes):
             self.nav.clear_diffs()
-            self.diff_label.setText("Comparando texto… aguardando a leitura dos PDFs")
+            self.diff_label.setText(tr("Comparando texto… aguardando a leitura dos PDFs"))
             self.diff_label.show()
             self.refresh()
             return
@@ -1099,25 +1127,25 @@ class MainWindow(QMainWindow):
         finally:
             QApplication.restoreOverrideCursor()
         self.diff_label.setText(self.diff_summary())
-        self.diff_label.setToolTip("Verde: incluído · Vermelho: removido · Azul: alterado "
-                                   "(em relação ao primeiro PDF). F7 vai para a próxima diferença.")
+        self.diff_label.setToolTip(tr("Verde: incluído · Vermelho: removido · Azul: alterado "
+                                   "(em relação ao primeiro PDF). F7 vai para a próxima diferença."))
         self.diff_label.show()
         self.refresh()
 
     def diff_summary(self) -> str:
         if self.nav.total_diffs == 0:
-            return "Texto idêntico ao do 1º PDF"
+            return tr("Texto idêntico ao do 1º PDF")
         parts = []
         for i, session in enumerate(self.sessions[1:], start=1):
             c = count_by_kind(self.nav.diffs[i])
             parts.append(f"{session.name}: +{c[ADDED]} −{c[REMOVED]} ~{c[CHANGED]}")
-        return "Diferenças em relação a " + self.sessions[0].name + " — " + " · ".join(parts)
+        return tr("Diferenças em relação a {name} — {parts}", name=self.sessions[0].name, parts=" · ".join(parts))
 
     def next_diff_all(self, delta: int) -> None:
         if self.nav.step_diff_all(delta):
             self.refresh()
         elif self.act_diff.isChecked():
-            self.statusBar().showMessage("Nenhuma diferença de texto para navegar.", 3000)
+            self.statusBar().showMessage(tr("Nenhuma diferença de texto para navegar."), 3000)
 
     # ======================================================================
     # Exportação
@@ -1134,13 +1162,13 @@ class MainWindow(QMainWindow):
         if choice.kind == SIDE_BY_SIDE:
             ext = choice.fmt
             name = "comparacao" if choice.scope == SCOPE_ALL else f"comparacao_posicao_{self.nav.current + 1}"
-            target, _ = QFileDialog.getSaveFileName(self, "Exportar comparação", str(Path(start_dir) / f"{name}.{ext}"),
+            target, _ = QFileDialog.getSaveFileName(self, tr("Exportar comparação"), str(Path(start_dir) / f"{name}.{ext}"),
                                                     f"{ext.upper()} (*.{ext})")
             if target and not target.lower().endswith(f".{ext}"):
                 target += f".{ext}"
             folder = str(Path(target).parent) if target else ""
         else:
-            target = QFileDialog.getExistingDirectory(self, "Pasta de destino", start_dir)
+            target = QFileDialog.getExistingDirectory(self, tr("Pasta de destino"), start_dir)
             folder = target
         if not target:
             return
@@ -1148,7 +1176,7 @@ class MainWindow(QMainWindow):
         files = self.export(choice, target)
         if files:
             where = files[0].parent
-            self.statusBar().showMessage(f"{_plural(len(files), 'arquivo exportado', 'arquivos exportados')} em {where}", 6000)
+            self.statusBar().showMessage(_plural(len(files), "{n} arquivo exportado", "{n} arquivos exportados") + tr(" em {folder}", folder=where), 6000)
 
     def export(self, choice: ExportChoice, target) -> List[Path]:
         """Executa a exportação (sem diálogos). Devolve os arquivos criados."""
@@ -1169,7 +1197,7 @@ class MainWindow(QMainWindow):
                 return self._export_annotated(Path(target))
             return []
         except (ExportError, OSError, RuntimeError, ValueError) as exc:
-            self._notify("warning", "Exportação não concluída", str(exc))
+            self._notify("warning", tr("Exportação não concluída"), str(exc))
             return []
         finally:
             QApplication.restoreOverrideCursor()
@@ -1201,7 +1229,7 @@ class MainWindow(QMainWindow):
             self.act_ocr.setChecked(True)
             self.indexer.set_ocr(True, self.ocr_language(), status.tessdata)
         else:
-            self.statusBar().showMessage("OCR desativado: Tesseract OCR não encontrado.", 8000)
+            self.statusBar().showMessage(tr("OCR desativado: Tesseract OCR não encontrado."), 8000)
 
     def toggle_ocr(self) -> None:
         if not self.act_ocr.isChecked():
@@ -1211,19 +1239,19 @@ class MainWindow(QMainWindow):
         status = ocr.check(self.ocr_language())
         if not status.available:
             self.act_ocr.setChecked(False)
-            self._notify("warning", "OCR indisponível", status.message)
+            self._notify("warning", tr("OCR indisponível"), status.message)
             return
         self.settings.setValue("ocr/enabled", True)
         self.indexer.set_ocr(True, self.ocr_language(), status.tessdata)
         self._reindex()
-        self.statusBar().showMessage("OCR ligado: páginas escaneadas serão reconhecidas (pode levar alguns segundos por página).", 6000)
+        self.statusBar().showMessage(tr("OCR ligado: páginas escaneadas serão reconhecidas (pode levar alguns segundos por página)."), 6000)
 
     def choose_ocr_language(self) -> None:
         tessdata = ocr.find_tessdata()
-        langs = ", ".join(ocr.installed_languages(tessdata)) or "nenhum (Tesseract não encontrado)"
+        langs = ", ".join(ocr.installed_languages(tessdata)) or tr("nenhum (Tesseract não encontrado)")
         text, ok = QInputDialog.getText(
-            self, "Idioma do OCR",
-            f"Código do idioma do Tesseract (ex.: por, eng, por+eng).\nInstalados: {langs}",
+            self, tr("Idioma do OCR"),
+            tr("Código do idioma do Tesseract (ex.: eng, por, eng+por).\nInstalados: {langs}", langs=langs),
             QLineEdit.EchoMode.Normal, self.ocr_language())
         if ok and text.strip():
             self.set_ocr_language(text.strip())
@@ -1236,7 +1264,7 @@ class MainWindow(QMainWindow):
                 self.act_ocr.setChecked(False)
                 self.indexer.set_ocr(False)
                 self.settings.setValue("ocr/enabled", False)
-                self._notify("warning", "OCR indisponível", status.message)
+                self._notify("warning", tr("OCR indisponível"), status.message)
                 return
             self.indexer.set_ocr(True, language, status.tessdata)
             self._reindex()
@@ -1250,7 +1278,7 @@ class MainWindow(QMainWindow):
     def _on_ocr_failed(self, message: str) -> None:
         self.act_ocr.setChecked(False)
         self.settings.setValue("ocr/enabled", False)
-        self._notify("warning", "OCR desativado", f"{message}\n\n{ocr.INSTALL_HELP}")
+        self._notify("warning", tr("OCR desativado"), f"{message}\n\n{ocr.install_help()}")
 
     def _hint_scanned(self, session: DocumentSession) -> None:
         if self.indexer.ocr_enabled or session.doc is None:
@@ -1264,7 +1292,7 @@ class MainWindow(QMainWindow):
             scanned = False
         if scanned:
             self.statusBar().showMessage(
-                f"“{session.name}” parece escaneado (sem texto). Ative Ferramentas › OCR para pesquisar nele.", 10000)
+                tr("“{name}” parece escaneado (sem texto). Ative Ferramentas › OCR para pesquisar nele.", name=session.name), 10000)
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self.settings.setValue("window/geometry", self.saveGeometry())

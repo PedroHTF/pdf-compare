@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.i18n import tr
+
 import itertools
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,21 +45,21 @@ class DocumentSession:
         try:
             doc = fitz.open(str(path))
         except Exception as exc:  # PyMuPDF levanta exceções variadas
-            raise PdfOpenError(f"Não foi possível abrir “{path.name}”: arquivo inválido ou corrompido.") from exc
+            raise PdfOpenError(tr("Não foi possível abrir “{name}”: arquivo inválido ou corrompido.", name=path.name)) from exc
         if not doc.is_pdf:
             doc.close()
-            raise PdfOpenError(f"“{path.name}” não é um PDF.")
+            raise PdfOpenError(tr("“{name}” não é um PDF.", name=path.name))
         encrypted = bool(doc.needs_pass)
         if encrypted:
             if password is None:
                 doc.close()
-                raise PasswordRequired(f"“{path.name}” está protegido por senha.")
+                raise PasswordRequired(tr("“{name}” está protegido por senha.", name=path.name))
             if not doc.authenticate(password):
                 doc.close()
-                raise WrongPassword(f"Senha incorreta para “{path.name}”.")
+                raise WrongPassword(tr("Senha incorreta para “{name}”.", name=path.name))
         if doc.page_count == 0:
             doc.close()
-            raise PdfOpenError(f"“{path.name}” não contém páginas.")
+            raise PdfOpenError(tr("“{name}” não contém páginas.", name=path.name))
         return cls(path=path, offset=offset, doc=doc, encrypted=encrypted)
 
     @property

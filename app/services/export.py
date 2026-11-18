@@ -10,6 +10,8 @@ Com `annotations`, os destaques e notas do usuário entram na saída.
 
 from __future__ import annotations
 
+from app.i18n import tr
+
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence
@@ -58,7 +60,7 @@ def _source(column: Column, page_no: int, cache: Dict) -> tuple:
 def build_comparison(columns: Sequence[Column], rows: Sequence[Row], labels: bool = True) -> fitz.Document:
     """Monta um PDF com uma página por linha de `rows`, colunas lado a lado."""
     if not columns:
-        raise ExportError("Nenhum PDF para exportar.")
+        raise ExportError(tr("Nenhum PDF para exportar."))
     out = fitz.open()
     cache: Dict = {}
     try:
@@ -79,12 +81,12 @@ def build_comparison(columns: Sequence[Column], rows: Sequence[Row], labels: boo
                 x0 = MARGIN + c * (cell_w + GAP)
                 cell = fitz.Rect(x0, top, x0 + cell_w, top + cell_h)
                 if labels:
-                    caption = col.name if page_no is None else f"{col.name} · página {page_no + 1}"
+                    caption = col.name if page_no is None else tr("{name} · página {page}", name=col.name, page=page_no + 1)
                     page.insert_textbox(fitz.Rect(x0, MARGIN, x0 + cell_w, top - 4), caption,
                                         fontsize=LABEL_SIZE, fontname="helv", color=(0.2, 0.2, 0.2))
                 if page_no is None:
                     page.draw_rect(cell, color=(0.7, 0.7, 0.7), fill=(0.98, 0.98, 0.98), dashes="[4] 0")
-                    page.insert_textbox(cell + (0, cell.height / 2 - 10, 0, 0), "(sem página nesta posição)",
+                    page.insert_textbox(cell + (0, cell.height / 2 - 10, 0, 0), tr("(sem página nesta posição)"),
                                         fontsize=LABEL_SIZE, fontname="helv", align=fitz.TEXT_ALIGN_CENTER,
                                         color=(0.5, 0.5, 0.5))
                     continue
@@ -122,7 +124,7 @@ def write(doc: fitz.Document, path: Path | str, fmt: str, dpi: int = DEFAULT_DPI
     """Grava o documento montado como PDF (um arquivo) ou PNG (um arquivo por página)."""
     path = Path(path)
     if fmt not in FORMATS:
-        raise ExportError(f"Formato desconhecido: {fmt}")
+        raise ExportError(tr("Formato desconhecido: {fmt}", fmt=fmt))
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         if fmt == PDF:
@@ -135,7 +137,7 @@ def write(doc: fitz.Document, path: Path | str, fmt: str, dpi: int = DEFAULT_DPI
                 progress(i + 1, len(targets))
         return targets
     except OSError as exc:
-        raise ExportError(f"Não foi possível gravar “{path.name}”: {exc.strerror or exc}") from exc
+        raise ExportError(tr("Não foi possível gravar “{name}”: {error}", name=path.name, error=exc.strerror or exc)) from exc
 
 
 def export_comparison(columns: Sequence[Column], rows: Sequence[Row], path: Path | str, fmt: str,

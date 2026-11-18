@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.i18n import tr
+
 from dataclasses import dataclass
 from typing import Optional
 
@@ -44,10 +46,10 @@ class ExportDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Exportar")
 
-        what = QGroupBox("O que exportar")
-        self.rb_side = QRadioButton("Comparação lado a lado (todos os PDFs em uma página)")
-        self.rb_current = QRadioButton("Página atual de cada PDF (um arquivo por PDF)")
-        self.rb_annotated = QRadioButton("Cada PDF inteiro com as anotações (PDF, um arquivo por PDF)")
+        what = QGroupBox(tr("O que exportar"))
+        self.rb_side = QRadioButton(tr("Comparação lado a lado (todos os PDFs em uma página)"))
+        self.rb_current = QRadioButton(tr("Página atual de cada PDF (um arquivo por PDF)"))
+        self.rb_annotated = QRadioButton(tr("Cada PDF inteiro com as anotações (PDF, um arquivo por PDF)"))
         self.rb_side.setChecked(True)
         self.kind_group = QButtonGroup(self)
         box = QVBoxLayout(what)
@@ -56,30 +58,30 @@ class ExportDialog(QDialog):
             box.addWidget(rb)
 
         self.fmt = QComboBox()
-        self.fmt.addItem("PDF (texto continua selecionável)", PDF)
-        self.fmt.addItem("PNG (imagem)", PNG)
+        self.fmt.addItem(tr("PDF (texto continua selecionável)"), PDF)
+        self.fmt.addItem(tr("PNG (imagem)"), PNG)
         self.scope = QComboBox()
-        self.scope.addItem("Somente a posição atual", SCOPE_CURRENT)
-        self.scope.addItem("Todas as páginas (uma página/imagem por posição)", SCOPE_ALL)
+        self.scope.addItem(tr("Somente a posição atual"), SCOPE_CURRENT)
+        self.scope.addItem(tr("Todas as páginas (uma página/imagem por posição)"), SCOPE_ALL)
         self.dpi = QSpinBox()
         self.dpi.setRange(50, 600)
         self.dpi.setSingleStep(50)
         self.dpi.setValue(150)
-        self.dpi.setSuffix(" dpi")
-        self.annotations = QCheckBox("Incluir minhas anotações (destaques e notas)")
+        self.dpi.setSuffix(tr(" dpi"))
+        self.annotations = QCheckBox(tr("Incluir minhas anotações (destaques e notas)"))
         self.annotations.setChecked(has_annotations)
 
         form = QFormLayout()
-        form.addRow("Formato:", self.fmt)
-        form.addRow("Páginas:", self.scope)
-        form.addRow("Resolução do PNG:", self.dpi)
+        form.addRow(tr("Formato:"), self.fmt)
+        form.addRow(tr("Páginas:"), self.scope)
+        form.addRow(tr("Resolução do PNG:"), self.dpi)
 
-        note = QLabel("O PDF original nunca é alterado: a exportação cria arquivos novos.")
+        note = QLabel(tr("O PDF original nunca é alterado: a exportação cria arquivos novos."))
         note.setObjectName("muted")
         note.setWordWrap(True)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Exportar…")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(tr("Exportar…"))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 

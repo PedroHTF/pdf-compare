@@ -62,3 +62,13 @@ def window(qtbot, tmp_path):
     w.resize(1200, 800)
     w.show()
     return w
+
+
+@pytest.fixture(autouse=True)
+def _portuguese_ui():
+    """Os testes conferem textos em português; os de inglês trocam o idioma explicitamente."""
+    from app import i18n
+
+    i18n.set_language("pt")
+    yield
+    i18n.set_language("pt")

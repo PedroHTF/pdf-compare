@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.i18n import tr
+
 from collections import OrderedDict
 from typing import List, Optional, Tuple, Union
 
@@ -125,11 +127,11 @@ class PdfPane(QFrame):
         self.name_label.setFont(font)
         tip = str(self.session.path)
         if self.session.encrypted:
-            tip += "\nProtegido por senha (desbloqueado enquanto estiver aberto)"
+            tip += tr("\nProtegido por senha (desbloqueado enquanto estiver aberto)")
         self.name_label.setToolTip(tip)
 
-        self.btn_prev = tool_button("◀", "Página anterior somente neste PDF")
-        self.btn_next = tool_button("▶", "Próxima página somente neste PDF")
+        self.btn_prev = tool_button("◀", tr("Página anterior somente neste PDF"))
+        self.btn_next = tool_button("▶", tr("Próxima página somente neste PDF"))
 
         self.page_spin = QSpinBox()
         self.page_spin.setRange(0, self.session.page_count)
@@ -138,28 +140,28 @@ class PdfPane(QFrame):
         self.page_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         self.page_spin.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.page_spin.setFixedWidth(self.fontMetrics().horizontalAdvance("00000") + 12)
-        self.page_spin.setToolTip("Digite uma página e pressione Enter (somente neste PDF)")
-        self.page_spin.setAccessibleName("Página atual deste PDF")
+        self.page_spin.setToolTip(tr("Digite uma página e pressione Enter (somente neste PDF)"))
+        self.page_spin.setAccessibleName(tr("Página atual deste PDF"))
         self.page_total = QLabel(f"/ {self.session.page_count}")
 
         self.hit_box = QWidget()
         self.hit_box.setObjectName("hitBox")
-        self.hit_box.setToolTip("Ocorrências da pesquisa neste PDF")
+        self.hit_box.setToolTip(tr("Ocorrências da pesquisa neste PDF"))
         hits = QHBoxLayout(self.hit_box)
         hits.setContentsMargins(2, 0, 2, 0)
         hits.setSpacing(0)
-        self.btn_hit_prev = tool_button("▲", "Ocorrência anterior neste PDF")
+        self.btn_hit_prev = tool_button("▲", tr("Ocorrência anterior neste PDF"))
         self.hit_label = QLabel()
         self.hit_label.setObjectName("hitLabel")
         self.hit_label.setMinimumWidth(self.fontMetrics().horizontalAdvance("000 de 000") + 10)
         self.hit_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.btn_hit_next = tool_button("▼", "Próxima ocorrência neste PDF")
+        self.btn_hit_next = tool_button("▼", tr("Próxima ocorrência neste PDF"))
         hits.addWidget(self.btn_hit_prev)
         hits.addWidget(self.hit_label)
         hits.addWidget(self.btn_hit_next)
         self.hit_box.hide()
 
-        self.btn_close = tool_button("✕", "Fechar este PDF")
+        self.btn_close = tool_button("✕", tr("Fechar este PDF"))
 
         row.addWidget(self.name_label, 1)
         row.addSpacing(6)
@@ -224,12 +226,13 @@ class PdfPane(QFrame):
         if not active:
             return
         if count == 0:
-            text, tip, state = "nenhuma", "Nenhuma ocorrência neste PDF", "none"
+            text, tip, state = tr("nenhuma"), tr("Nenhuma ocorrência neste PDF"), "none"
         elif position < 0:
-            text = f"{count} ocorr."
-            tip, state = f"{count} ocorrência(s) neste PDF — use ▼ para ir à próxima", "found"
+            text = tr("{n} ocorr.", n=count)
+            tip, state = tr("{n} ocorrência(s) neste PDF — use ▼ para ir à próxima", n=count), "found"
         else:
-            text, tip, state = f"{position + 1} de {count}", f"Ocorrência {position + 1} de {count} neste PDF", "found"
+            text = tr("{pos} de {n}", pos=position + 1, n=count)
+            tip, state = tr("Ocorrência {pos} de {n} neste PDF", pos=position + 1, n=count), "found"
         self.hit_label.setText(text)
         self.hit_label.setToolTip(tip)
         if self.hit_label.property("state") != state:
@@ -302,9 +305,9 @@ class PdfPane(QFrame):
         self._shown_hit = None
         self.image.setPixmap(QPixmap())
         if raw < 0:
-            self.image.setText("Este PDF começa mais adiante.\nUse ▶ neste painel para trazê-lo para cá.")
+            self.image.setText(tr("Este PDF começa mais adiante.\nUse ▶ neste painel para trazê-lo para cá."))
         else:
-            self.image.setText(f"Fim do documento ({count} páginas).\nUse ◀ neste painel para voltar.")
+            self.image.setText(tr("Fim do documento ({n} páginas).\nUse ◀ neste painel para voltar.", n=count))
         self.image.resize(self.scroll.viewport().size())
 
     def _scale_for(self, rect: fitz.Rect, zoom: ZoomMode) -> float:

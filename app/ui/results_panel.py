@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.i18n import tr
+
 from typing import List, Optional, Sequence, Tuple
 
 from PySide6.QtCore import Qt, Signal
@@ -18,14 +20,14 @@ class ResultsPanel(QWidget):
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.info = QLabel("Digite algo na pesquisa para ver as ocorrências aqui.")
+        self.info = QLabel(tr("Digite algo na pesquisa para ver as ocorrências aqui."))
         self.info.setObjectName("muted")
         self.info.setWordWrap(True)
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
         self.tree.setRootIsDecorated(True)
         self.tree.setUniformRowHeights(True)
-        self.tree.setAccessibleName("Lista de ocorrências da pesquisa")
+        self.tree.setAccessibleName(tr("Lista de ocorrências da pesquisa"))
         self.tree.itemActivated.connect(self._on_item)
         self.tree.itemClicked.connect(self._on_item)
 
@@ -37,11 +39,11 @@ class ResultsPanel(QWidget):
     def set_results(self, query: str, results: Results) -> None:
         self.tree.clear()
         if not query:
-            self.info.setText("Digite algo na pesquisa para ver as ocorrências aqui.")
+            self.info.setText(tr("Digite algo na pesquisa para ver as ocorrências aqui."))
             return
         total = sum(len(items) for _, items in results)
-        self.info.setText(f"{total} ocorrência(s) de “{query}”. Clique para ir até ela."
-                          if total else f"Nenhuma ocorrência de “{query}”.")
+        self.info.setText(tr("{n} ocorrência(s) de “{query}”. Clique para ir até ela.", n=total, query=query)
+                          if total else tr("Nenhuma ocorrência de “{query}”.", query=query))
         for doc_index, (name, items) in enumerate(results):
             parent = QTreeWidgetItem([f"{name}  ({len(items)})"])
             parent.setToolTip(0, name)
@@ -50,12 +52,12 @@ class ResultsPanel(QWidget):
             parent.setFont(0, font)
             parent.setFlags(parent.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             for pos, (page, snippet) in enumerate(items[:MAX_ITEMS_PER_DOC]):
-                child = QTreeWidgetItem([f"p. {page + 1}  —  {snippet}"])
+                child = QTreeWidgetItem([tr("p. {page}  —  {snippet}", page=page + 1, snippet=snippet)])
                 child.setToolTip(0, snippet)
                 child.setData(0, Qt.ItemDataRole.UserRole, (doc_index, pos))
                 parent.addChild(child)
             if len(items) > MAX_ITEMS_PER_DOC:
-                more = QTreeWidgetItem([f"… e mais {len(items) - MAX_ITEMS_PER_DOC} (use ▲ ▼ no painel)"])
+                more = QTreeWidgetItem([tr("… e mais {n} (use ▲ ▼ no painel)", n=len(items) - MAX_ITEMS_PER_DOC)])
                 more.setFlags(Qt.ItemFlag.NoItemFlags)
                 parent.addChild(more)
             self.tree.addTopLevelItem(parent)

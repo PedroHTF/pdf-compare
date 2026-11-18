@@ -32,6 +32,7 @@ Código-fonte: <https://github.com/PedroHTF/pdf-compare>
 | Pesquisar em PDF escaneado | **Ferramentas › Reconhecer texto em PDFs escaneados (OCR)** — requer o Tesseract (veja abaixo) |
 | Zoom | Ctrl + roda do mouse, Ctrl++ / Ctrl+-, ou a lista de zoom (largura, página inteira, %) |
 | Rolagem acompanhada | **Rolagem vinculada** (ligada por padrão): rolar um PDF rola os outros |
+| Trocar o idioma (English / Português) | **Ferramentas › Idioma / Language** e reinicie o programa |
 | Ver todos os atalhos | F1 |
 
 **Modelo de navegação.** Todos os PDFs compartilham uma posição. Os botões de um painel
@@ -43,6 +44,10 @@ naquela posição, o painel avisa e indica como trazê-lo de volta.
 dá para diferenciar maiúsculas, exigir palavra inteira ou considerar acentos. Também encontra
 frases e palavras hifenizadas na quebra de linha. PDFs escaneados (somente imagem) passam a
 ser pesquisáveis com o OCR ligado.
+
+**Idioma.** A interface existe em inglês e em português. Na primeira execução o programa usa o
+idioma do Windows (português se o sistema estiver em português; inglês nos demais casos). Para
+trocar, use **Ferramentas › Idioma / Language** e reinicie o programa.
 
 **Comparar texto.** O primeiro PDF aberto é a referência; cada um dos outros é comparado com ele,
 palavra por palavra. Cores: **verde** = incluído, **vermelho** (tachado) = removido,
@@ -62,9 +67,11 @@ anotações** (gera um novo PDF com anotações de verdade, editáveis em outros
 
 **OCR (opcional).** Usa o [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) por meio do
 PyMuPDF. Ele não vem com o programa: instale-o à parte (no Windows, o instalador da
-[UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki)) marcando o idioma **Português**.
+[UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki)); o inglês já vem incluído e,
+para PDFs em português, marque também o idioma **Portuguese** na instalação.
 O programa procura o Tesseract na variável `TESSDATA_PREFIX` e nas pastas padrão de instalação.
-O idioma padrão é `por` (mude em **Ferramentas › Idioma do OCR…**, por exemplo `por+eng`).
+O idioma padrão do OCR é o inglês, `eng` (mude em **Ferramentas › Idioma do OCR…**, por exemplo
+`por` ou `eng+por`).
 Só as páginas sem texto e com imagem passam pelo OCR, que leva alguns segundos por página; o
 resultado serve para pesquisar e comparar, e o PDF não é alterado. Sem o Tesseract, o programa
 avisa e continua funcionando normalmente.
@@ -125,6 +132,7 @@ app/
   services/export.py       exportação lado a lado e das páginas atuais (PDF/PNG)
   services/workspace.py    abrir pasta, arquivos recentes e sessões (.pdfcompare)
   services/ocr.py          OCR opcional com Tesseract (detecção e reconhecimento)
+  i18n.py                  idioma da interface (tr); i18n_en.py tem as traduções para o inglês
   ui/main_window.py        janela, menus, barras, grade, arrastar e soltar
   ui/pane.py               painel de um PDF (renderização, destaques, controles)
   ui/search_bar.py         barra de pesquisa
@@ -154,5 +162,7 @@ samples/                   PDFs de exemplo
   recentes, OCR) ficam salvas entre execuções.
 - A comparação de texto é feita em dois níveis (linhas, depois palavras dentro das linhas
   diferentes) com `difflib`, para continuar rápida em documentos longos.
+- Os textos do código são escritos em português e passam por `tr()`; as traduções para o inglês
+  ficam em `app/i18n_en.py`. O teste `tests/test_i18n.py` falha se algum texto ficar sem tradução.
 - Toda a lógica nova (diferenças, anotações, exportação, sessões, OCR) fica em `app/services`,
   sem Qt, e é testada diretamente.

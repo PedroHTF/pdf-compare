@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.i18n import tr
+
 from typing import Optional
 
 from PySide6.QtCore import QSize, Qt, Signal
@@ -57,7 +59,7 @@ class DropZone(QFrame):
         self,
         title: str,
         subtitle: str,
-        button_text: str = "Escolher PDFs…",
+        button_text: Optional[str] = None,
         compact: bool = False,
         pixmap: Optional[QPixmap] = None,
         parent: Optional[QWidget] = None,
@@ -85,7 +87,7 @@ class DropZone(QFrame):
         subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         subtitle_label.setWordWrap(True)
 
-        self.button = QPushButton(button_text)
+        self.button = QPushButton(button_text or tr("Escolher PDFs…"))
         self.button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.button.setMinimumHeight(34)
         self.button.clicked.connect(self.open_requested.emit)

@@ -8,6 +8,8 @@ Senhas nunca são gravadas.
 
 from __future__ import annotations
 
+from app.i18n import tr
+
 import json
 import os
 import re
@@ -95,7 +97,7 @@ def save_session(path: Path | str, data: SessionData) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError as exc:
-        raise SessionError(f"Não foi possível salvar a sessão: {exc.strerror or exc}") from exc
+        raise SessionError(tr("Não foi possível salvar a sessão: {error}", error=exc.strerror or exc)) from exc
     return path
 
 
@@ -105,13 +107,13 @@ def load_session(path: Path | str) -> Tuple[SessionData, List[str]]:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except OSError as exc:
-        raise SessionError(f"Não foi possível ler “{path.name}”: {exc.strerror or exc}") from exc
+        raise SessionError(tr("Não foi possível ler “{name}”: {error}", name=path.name, error=exc.strerror or exc)) from exc
     except ValueError as exc:
-        raise SessionError(f"“{path.name}” não é um arquivo de sessão válido.") from exc
+        raise SessionError(tr("“{name}” não é um arquivo de sessão válido.", name=path.name)) from exc
     if not isinstance(raw, dict) or not isinstance(raw.get("files"), list):
-        raise SessionError(f"“{path.name}” não é um arquivo de sessão válido.")
+        raise SessionError(tr("“{name}” não é um arquivo de sessão válido.", name=path.name))
     if int(raw.get("version", 1)) > SESSION_VERSION:
-        raise SessionError(f"“{path.name}” foi criado por uma versão mais nova do programa.")
+        raise SessionError(tr("“{name}” foi criado por uma versão mais nova do programa.", name=path.name))
 
     base = path.parent
     files: List[SessionFile] = []
