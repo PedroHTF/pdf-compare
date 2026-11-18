@@ -16,3 +16,4 @@ __version__ = "0.1.0"
 __author__ = "Os autores do PDF Compare"   # troque pelo seu nome ou empresa
 __copyright__ = f"© 2026 {__author__}"
 __license__ = "AGPL-3.0-or-later"
+__url__ = "https://github.com/PedroHTF/pdf-compare"   # código-fonte público

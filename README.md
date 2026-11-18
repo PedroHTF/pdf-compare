@@ -4,6 +4,8 @@ Aplicativo para Windows que exibe de **2 a 6 PDFs lado a lado**, pesquisa em tod
 mesmo tempo e avança ou retrocede página por página, em todos juntos ou em cada um separadamente.
 Os arquivos são processados somente no computador local.
 
+Código-fonte: <https://github.com/PedroHTF/pdf-compare>
+
 ## Como usar
 
 | Quero… | Como |
@@ -40,7 +42,8 @@ obrigatória porque o programa usa o PyMuPDF/MuPDF, que é AGPL. No programa: **
   e manter versões modificadas sob a AGPL. Usar sem distribuir não gera obrigação.
 - **Como cumprir:** o `build.ps1` já coloca `LICENCA.txt` e `codigo-fonte-PDFCompare-<versão>.zip`
   dentro de `dist\PDFCompare`. Distribuindo a pasta inteira, o código-fonte vai junto.
-  Se preferir publicar o código (por exemplo, no GitHub), informe o link junto com o programa.
+  O código também está publicado em <https://github.com/PedroHTF/pdf-compare>, e o link
+  aparece no programa (**Sobre** e **Licença e créditos**).
 - **Autoria:** troque "Os autores do PDF Compare" pelo seu nome em `app/__init__.py` (`__author__`).
 
 Componentes de terceiros e licenças: PyMuPDF/MuPDF (AGPL-3.0), PySide6/Qt (LGPL-3.0), Python (PSF)

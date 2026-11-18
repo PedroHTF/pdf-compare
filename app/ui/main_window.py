@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app import __copyright__, __version__
+from app import __copyright__, __url__, __version__
 from app.model.session import DocumentSession, PasswordRequired, PdfOpenError, WrongPassword
 from app.services.indexer import IndexScheduler
 from app.services.navigation import NavigationController
@@ -634,7 +634,8 @@ class MainWindow(QMainWindow):
             "<p>Compare de 2 a 6 PDFs lado a lado, com pesquisa simultânea "
             "e navegação página a página.</p>"
             "<p>Os arquivos são processados apenas neste computador.</p>"
-            f"<p>{__copyright__}<br>Software livre sob a licença GNU AGPL v3.</p>"
+            f"<p>{__copyright__}<br>Software livre sob a licença GNU AGPL v3.<br>"
+            f'Código-fonte: <a href="{__url__}">{__url__}</a></p>'
         )
         btn_license = box.addButton("Licença e créditos…", QMessageBox.ButtonRole.ActionRole)
         box.addButton(QMessageBox.StandardButton.Close)

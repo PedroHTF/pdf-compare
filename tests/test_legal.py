@@ -34,6 +34,7 @@ def test_license_dialog(window, qtbot):
     assert dialog.tabs.count() == 3
     text = dialog.summary.toPlainText()
     assert "O que você pode fazer" in text and "código-fonte completo" in text
+    assert "github.com/PedroHTF/pdf-compare" in text
     assert dialog.table.rowCount() >= 6
     dialog._show_license_of("LGPL-3.0.txt")
     assert "LESSER" in dialog.license_view.toPlainText()

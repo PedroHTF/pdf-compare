@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app import __copyright__, __version__
+from app import __copyright__, __url__, __version__
 from app.legal import LICENSE_TEXTS, SOURCE_ZIP_NAME, components, program_dir, read_license, source_zip_path
 
 
@@ -65,6 +65,8 @@ o código-fonte também deve ser oferecido a esses usuários.</li>
 
 <h4>Código-fonte</h4>
 <p>{source_line}</p>
+<p>O código-fonte também está publicado em
+<a href="{__url__}">{html.escape(__url__)}</a>.</p>
 
 <h4>Sem garantia</h4>
 <p>O programa é fornecido "no estado em que se encontra", sem garantias de qualquer tipo.</p>

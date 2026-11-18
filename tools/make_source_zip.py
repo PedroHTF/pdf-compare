@@ -31,6 +31,7 @@ SOURCE_README = """PDF Compare - código-fonte
 
 Este arquivo contém o código-fonte completo do PDF Compare, distribuído sob a
 GNU Affero General Public License v3 ou posterior (arquivo LICENSE).
+Repositório público: https://github.com/PedroHTF/pdf-compare
 
 Como reconstruir o executável no Windows:
 

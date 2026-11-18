@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from app import __version__
+from app import __url__, __version__
 
 # Em código-fonte: raiz do projeto. No .exe (PyInstaller): pasta _internal.
 BUNDLE_ROOT = Path(__file__).resolve().parent.parent
@@ -69,7 +69,7 @@ def components() -> List[Component]:
 
     items = [
         Component("PDF Compare", __version__, "AGPL-3.0-or-later", "AGPL-3.0.txt",
-                  "Os autores do PDF Compare", ""),
+                  "Os autores do PDF Compare", __url__),
         Component("PyMuPDF", fitz.VersionBind, "AGPL-3.0 (ou licença comercial)", "AGPL-3.0.txt",
                   "Artifex Software", "https://pymupdf.readthedocs.io"),
         Component("MuPDF", fitz.VersionFitz, "AGPL-3.0 (ou licença comercial)", "AGPL-3.0.txt",
