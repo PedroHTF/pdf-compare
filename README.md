@@ -8,6 +8,18 @@ Os arquivos são processados somente no computador local.
 
 Código-fonte: <https://github.com/PedroHTF/pdf-compare>
 
+## Download
+
+Baixe a versão mais recente em **[Releases](https://github.com/PedroHTF/pdf-compare/releases/latest)**:
+
+- `PDFCompare-Setup-<versão>.exe`: instalador para Windows (recomendado). Cria atalho no Menu Iniciar,
+  aparece em "Abrir com" para PDFs e abre arquivos de sessão `.pdfcompare` com duplo clique.
+- `PDFCompare-<versão>-portable.zip`: versão portátil; extraia e rode `PDFCompare.exe`.
+- `codigo-fonte-PDFCompare-<versão>.zip`: código-fonte completo (AGPL-3.0).
+
+Na primeira execução o Windows SmartScreen pode avisar que o programa não é reconhecido
+(ele não tem assinatura digital paga): clique em **Mais informações › Executar assim mesmo**.
+
 ## Como usar
 
 | Quero… | Como |
@@ -117,6 +129,33 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 O build roda os testes antes e gera `dist\PDFCompare\PDFCompare.exe`. Para distribuir,
 copie a pasta `dist\PDFCompare` inteira.
 
+### Gerar o instalador
+
+Com o [Inno Setup 6](https://jrsoftware.org/isinfo.php) instalado, depois do `build.ps1`:
+
+```bash
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=0.2.0 installer.iss
+```
+
+O instalador fica em `dist\installer\`.
+
+### Publicar uma versão
+
+O GitHub gera tudo sozinho (`.github/workflows/release.yml`): testes, executável, instalador,
+pacote portátil e código-fonte. Para lançar:
+
+1. Atualize `__version__` em `app/__init__.py` e faça o merge na `main`.
+2. Crie e envie a tag com o mesmo número:
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+3. Em alguns minutos a Release aparece em **Releases**, com os arquivos para download.
+   Se a tag não bater com `__version__`, o workflow para com erro.
+
+Em cada pull request o mesmo workflow roda sem publicar nada; os arquivos gerados ficam em
+**Actions › (execução) › Artifacts**, para testar antes do lançamento.
+
 ### Estrutura
 
 ```
@@ -145,6 +184,8 @@ app/
   legal.py                 dados de licença e componentes de terceiros
   ui/license_dialog.py     janela "Licença e créditos"
 tools/make_icon.py         regenera app.ico e logo_256.png após editar o logo.svg
+installer.iss              configuração do instalador (Inno Setup)
+.github/workflows/         build automático e publicação de Releases
 tools/make_source_zip.py   gera o pacote de código-fonte que acompanha o .exe
 licenses/                  textos completos das licenças (AGPL, LGPL, GPL, PSF, PyInstaller)
 tests/                     testes de cada serviço e da interface
