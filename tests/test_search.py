@@ -78,3 +78,18 @@ def test_hyphenated_word_across_lines(make_pdf):
 def test_empty_queries_return_nothing(make_pdf, query):
     index = _index(make_pdf("a.pdf", texts=["texto"]))
     assert search_index(index, query) == []
+
+
+def test_hit_snippet_shows_context(make_pdf):
+    import fitz
+
+    from app.services.search import hit_snippet
+    from app.services.text_index import DocumentIndex
+
+    doc = fitz.open(str(make_pdf("s.pdf", texts=["um dois tres quatro cinco seis sete oito nove dez onze"])))
+    index = DocumentIndex.build(doc)
+    doc.close()
+    hit = search_index(index, "seis sete")[0]
+    assert hit_snippet(index, hit, context=2) == "… quatro cinco [seis sete] oito nove …"
+    first = search_index(index, "um")[0]
+    assert hit_snippet(index, first, context=1) == "[um] dois …"

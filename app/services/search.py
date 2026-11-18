@@ -19,6 +19,8 @@ class SearchOptions:
 class Hit:
     page: int                   # índice da página no arquivo
     rects: Tuple[Rect, ...]     # áreas a destacar (coordenadas da página)
+    word: int = -1              # posição da primeira palavra na página (para o trecho)
+    length: int = 1             # quantidade de palavras da ocorrência
 
 
 def parse_query(query: str, options: SearchOptions) -> List[str]:
@@ -39,7 +41,7 @@ def search_index(index: DocumentIndex, query: str, options: SearchOptions = Sear
         for i in range(len(words) - n + 1):
             if _matches(words, i, terms, options.whole_word):
                 rects = tuple(r for t in tokens[i:i + n] for r in t.rects)
-                hits.append(Hit(page_no, rects))
+                hits.append(Hit(page_no, rects, i, n))
     return hits
 
 
@@ -53,3 +55,19 @@ def _matches(words: List[str], i: int, terms: List[str], whole_word: bool) -> bo
     if not words[i].endswith(terms[0]) or not words[i + n - 1].startswith(terms[-1]):
         return False
     return all(words[i + k] == terms[k] for k in range(1, n - 1))
+
+
+def hit_snippet(index: DocumentIndex, hit: Hit, context: int = 6, max_chars: int = 120) -> str:
+    """Trecho com a ocorrência entre colchetes: "… o [contrato] foi assinado …"."""
+    if hit.word < 0 or hit.page >= len(index.pages):
+        return ""
+    words = [t.text for t in index.pages[hit.page]]
+    start = max(0, hit.word - context)
+    end = min(len(words), hit.word + hit.length + context)
+    before = " ".join(words[start:hit.word])
+    match = " ".join(words[hit.word:hit.word + hit.length])
+    after = " ".join(words[hit.word + hit.length:end])
+    text = f"{before} [{match}] {after}".strip()
+    if len(text) > max_chars:
+        text = text[:max_chars - 1].rstrip() + "…"
+    return ("… " if start > 0 else "") + text + (" …" if end < len(words) else "")
