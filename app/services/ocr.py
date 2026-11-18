@@ -11,6 +11,8 @@ padrão do instalador para Windows.
 
 from __future__ import annotations
 
+from app.i18n import tr
+
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,7 +22,7 @@ import fitz
 
 from app.services.text_index import Token, extract_tokens
 
-DEFAULT_LANGUAGE = "por"
+DEFAULT_LANGUAGE = "eng"
 DEFAULT_DPI = 300
 
 WINDOWS_TESSDATA = [
@@ -29,12 +31,13 @@ WINDOWS_TESSDATA = [
     Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Tesseract-OCR" / "tessdata",
 ]
 
-INSTALL_HELP = (
-    "Para usar o OCR, instale o Tesseract OCR (para Windows: instalador da UB Mannheim, "
-    "https://github.com/UB-Mannheim/tesseract/wiki) e marque o idioma Português durante a "
-    "instalação. Se ele foi instalado em outra pasta, defina a variável de ambiente "
-    "TESSDATA_PREFIX com o caminho da pasta “tessdata”. Depois, reinicie o programa."
-)
+
+def install_help() -> str:
+    return tr("Para usar o OCR, instale o Tesseract OCR (para Windows: instalador da UB Mannheim, "
+              "https://github.com/UB-Mannheim/tesseract/wiki) e marque os idiomas desejados durante a "
+              "instalação (o inglês já vem incluído). Se ele foi instalado em outra pasta, defina a "
+              "variável de ambiente TESSDATA_PREFIX com o caminho da pasta “tessdata”. Depois, "
+              "reinicie o programa.")
 
 
 class OcrUnavailable(Exception):
@@ -83,17 +86,17 @@ def check(language: str = DEFAULT_LANGUAGE) -> OcrStatus:
     """Verifica se o OCR pode ser usado com o idioma pedido ("por", "por+eng"...)."""
     tessdata = find_tessdata()
     if tessdata is None:
-        return OcrStatus(False, None, (), "O Tesseract OCR não foi encontrado neste computador.\n\n" + INSTALL_HELP)
+        return OcrStatus(False, None, (), tr("O Tesseract OCR não foi encontrado neste computador.") + "\n\n" + install_help())
     langs = installed_languages(tessdata)
     wanted = split_language(language) or [DEFAULT_LANGUAGE]
     missing = [w for w in wanted if w not in langs]
     if missing:
         return OcrStatus(
             False, tessdata, langs,
-            f"O Tesseract foi encontrado, mas falta o idioma “{'+'.join(missing)}”.\n"
-            f"Idiomas instalados: {', '.join(langs) or 'nenhum'}.\n\n" + INSTALL_HELP,
+            tr("O Tesseract foi encontrado, mas falta o idioma “{missing}”.\nIdiomas instalados: {langs}.",
+               missing="+".join(missing), langs=", ".join(langs) or tr("nenhum")) + "\n\n" + install_help(),
         )
-    return OcrStatus(True, tessdata, langs, "OCR disponível.")
+    return OcrStatus(True, tessdata, langs, tr("OCR disponível."))
 
 
 def page_needs_ocr(page: fitz.Page) -> bool:
@@ -111,10 +114,10 @@ def ocr_tokens(page: fitz.Page, language: str = DEFAULT_LANGUAGE, dpi: int = DEF
     """Reconhece o texto da página (sem alterar o PDF) e devolve as palavras com posição."""
     tessdata = tessdata or find_tessdata()
     if tessdata is None:
-        raise OcrUnavailable("Tesseract OCR não encontrado.")
+        raise OcrUnavailable(tr("Tesseract OCR não encontrado."))
     lang = "+".join(split_language(language)) or DEFAULT_LANGUAGE
     try:
         textpage = page.get_textpage_ocr(language=lang, dpi=dpi, full=True, tessdata=tessdata)
     except Exception as exc:
-        raise OcrUnavailable(f"Falha no OCR: {exc}") from exc
+        raise OcrUnavailable(tr("Falha no OCR: {error}", error=exc)) from exc
     return extract_tokens(page, textpage=textpage)

@@ -103,3 +103,15 @@ def test_indexer_disables_ocr_and_warns_when_unavailable(qtbot, tmp_path, monkey
     qtbot.waitUntil(lambda: not sched.busy, timeout=5000)
     assert not sched.ocr_enabled and sched.index_for(session).complete
     session.close()
+
+
+def test_default_ocr_language_is_english():
+    assert ocr.DEFAULT_LANGUAGE == "eng"
+
+
+@pytest.mark.skipif(not ocr.check("eng").available, reason="Tesseract com idioma 'eng' não instalado")
+def test_ocr_english_default(tmp_path):
+    doc = fitz.open(str(_scanned_pdf(tmp_path / "e.pdf", "Scanned contract number 42")))
+    words = [t.text.lower() for t in ocr.ocr_tokens(doc[0], dpi=200)]
+    assert "contract" in words and "scanned" in words
+    doc.close()
