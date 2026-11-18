@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="256" height="256">
+  <rect width="96" height="96" rx="22" fill="#185FA5"/>
+  <!-- página de trás (mais alta) -->
+  <rect x="47" y="12" width="34" height="54" rx="3" fill="#D3E5F8" stroke="#185FA5" stroke-width="2"/>
+  <rect x="69" y="20" width="8" height="3" rx="1.5" fill="#85B7EB"/>
+  <rect x="69" y="62" width="8" height="3" rx="1.5" fill="#85B7EB"/>
+  <!-- página do meio -->
+  <rect x="31" y="19" width="34" height="54" rx="3" fill="#EAF3FC" stroke="#185FA5" stroke-width="2"/>
+  <rect x="53" y="27" width="8" height="3" rx="1.5" fill="#85B7EB"/>
+  <rect x="53" y="66" width="8" height="3" rx="1.5" fill="#85B7EB"/>
+  <!-- página da frente (mais baixa) -->
+  <rect x="15" y="26" width="34" height="54" rx="3" fill="#FFFFFF" stroke="#185FA5" stroke-width="2"/>
+  <rect x="20" y="34" width="22" height="3" rx="1.5" fill="#B5D4F4"/>
+  <rect x="20" y="41" width="16" height="3" rx="1.5" fill="#B5D4F4"/>
+  <rect x="20" y="62" width="22" height="3" rx="1.5" fill="#B5D4F4"/>
+  <rect x="20" y="69" width="14" height="3" rx="1.5" fill="#B5D4F4"/>
+  <!-- marca-texto atravessando todas as páginas -->
+  <rect x="9" y="49" width="78" height="9" rx="2.5" fill="#EF9F27"/>
+</svg>
