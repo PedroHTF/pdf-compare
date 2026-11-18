@@ -26,7 +26,8 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $v = python -c "import re,pathlib; print(re.search(r'__version__ = \"(.+?)\"', pathlib.Path('app/__init__.py').read_text(encoding='utf-8')).group(1))"
+          $v = (python -c "from app import __version__; print(__version__)").Trim()
+          if (-not $v) { throw "Não foi possível ler __version__ em app/__init__.py." }
           "version=$v" >> $env:GITHUB_OUTPUT
           if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne "v$v") {
             throw "A tag $env:GITHUB_REF_NAME não bate com __version__ = $v (app/__init__.py)."
