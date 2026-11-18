@@ -249,6 +249,7 @@ def test_save_and_open_session(window, versions, tmp_path):
 def test_session_with_missing_file(window, versions, tmp_path):
     window.add_files(versions)
     saved = window.save_session_to(tmp_path / "s")
+    window.close_all()          # no Windows, um PDF aberto não pode ser apagado
     versions[1].unlink()
     window.open_session(saved)
     assert [s.name for s in window.sessions] == ["v1.pdf"]
