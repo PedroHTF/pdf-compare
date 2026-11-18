@@ -12,7 +12,7 @@ UM FIM ESPECÍFICO. Veja a GNU Affero General Public License para mais detalhes
 (arquivo LICENSE).
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Os autores do PDF Compare"   # troque pelo seu nome ou empresa
 __copyright__ = f"© 2026 {__author__}"
 __license__ = "AGPL-3.0-or-later"
