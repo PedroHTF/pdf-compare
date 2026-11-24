@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from app.i18n import tr
+
 from collections import OrderedDict
 from typing import List, Optional, Tuple, Union
 
 import fitz
-from PySide6.QtCore import QEvent, QObject, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
+    QRubberBand,
     QHBoxLayout,
     QLabel,
     QScrollArea,
@@ -21,7 +24,9 @@ from PySide6.QtWidgets import (
 )
 
 from app.model.session import DocumentSession
+from app.services.annotations import HIGHLIGHT, Annotation
 from app.services.search import Hit
+from app.services.text_diff import ADDED, CHANGED, REMOVED, DiffMark
 from app.ui.widgets import ElidedLabel
 
 ZoomMode = Union[str, float]
@@ -31,6 +36,21 @@ FIT_PAGE = "page"
 HIT_FILL = QColor(255, 213, 0, 100)
 CURRENT_FILL = QColor(255, 140, 0, 110)
 CURRENT_PEN = QColor(214, 92, 0)
+DIFF_STYLE = {   # preenchimento, sublinhado
+    ADDED: (QColor(52, 168, 83, 70), QColor(30, 130, 60)),
+    REMOVED: (QColor(234, 67, 53, 70), QColor(197, 34, 31)),
+    CHANGED: (QColor(66, 133, 244, 70), QColor(25, 103, 210)),
+}
+CURRENT_DIFF_PEN = QColor(60, 60, 60)
+ANNOT_FILL = QColor(255, 235, 59, 120)
+NOTE_FILL = QColor(255, 167, 38)
+NOTE_PEN = QColor(150, 80, 0)
+
+# Ferramentas de anotação
+TOOL_NONE = ""
+TOOL_HIGHLIGHT = "highlight"
+TOOL_NOTE = "note"
+
 MAX_RENDER_SIDE = 8000  # pixels; evita imagens gigantes em zoom muito alto
 
 
@@ -44,7 +64,8 @@ def tool_button(text: str, tip: str) -> QToolButton:
     return button
 
 
-RenderArgs = Tuple[Optional[int], int, Tuple[Hit, ...], Optional[Hit], ZoomMode]
+RenderArgs = Tuple[Optional[int], int, Tuple[Hit, ...], Optional[Hit], ZoomMode,
+                   Tuple[DiffMark, ...], Optional[DiffMark], Tuple[Tuple, ...]]
 
 
 class PdfPane(QFrame):
@@ -54,6 +75,9 @@ class PdfPane(QFrame):
     close_requested = Signal(int)
     zoom_step = Signal(int)           # +1 / -1 (Ctrl + roda do mouse)
     scrolled = Signal(int, float)     # (painel, proporção vertical 0..1)
+    highlight_requested = Signal(int, int, tuple)        # (painel, página, retângulo na página)
+    note_requested = Signal(int, int, float, float)      # (painel, página, x, y)
+    annotation_menu = Signal(int, int, float, float, QPoint)  # (painel, página, x, y, posição global)
 
     CACHE_SIZE = 4
     MARGIN = 12
@@ -69,6 +93,11 @@ class PdfPane(QFrame):
         self._shown_page: Optional[int] = None
         self._shown_hit: Optional[Hit] = None
         self._programmatic = False
+        self.tool = TOOL_NONE
+        self._annotations: Tuple[Annotation, ...] = ()
+        self._drag_start: Optional[QPoint] = None
+        self._scale = 1.0
+        self._dpr = 1.0
 
         self._build_header()
         self._build_view()
@@ -98,11 +127,11 @@ class PdfPane(QFrame):
         self.name_label.setFont(font)
         tip = str(self.session.path)
         if self.session.encrypted:
-            tip += "\nProtegido por senha (desbloqueado enquanto estiver aberto)"
+            tip += tr("\nProtegido por senha (desbloqueado enquanto estiver aberto)")
         self.name_label.setToolTip(tip)
 
-        self.btn_prev = tool_button("◀", "Página anterior somente neste PDF")
-        self.btn_next = tool_button("▶", "Próxima página somente neste PDF")
+        self.btn_prev = tool_button("◀", tr("Página anterior somente neste PDF"))
+        self.btn_next = tool_button("▶", tr("Próxima página somente neste PDF"))
 
         self.page_spin = QSpinBox()
         self.page_spin.setRange(0, self.session.page_count)
@@ -111,28 +140,28 @@ class PdfPane(QFrame):
         self.page_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         self.page_spin.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.page_spin.setFixedWidth(self.fontMetrics().horizontalAdvance("00000") + 12)
-        self.page_spin.setToolTip("Digite uma página e pressione Enter (somente neste PDF)")
-        self.page_spin.setAccessibleName("Página atual deste PDF")
+        self.page_spin.setToolTip(tr("Digite uma página e pressione Enter (somente neste PDF)"))
+        self.page_spin.setAccessibleName(tr("Página atual deste PDF"))
         self.page_total = QLabel(f"/ {self.session.page_count}")
 
         self.hit_box = QWidget()
         self.hit_box.setObjectName("hitBox")
-        self.hit_box.setToolTip("Ocorrências da pesquisa neste PDF")
+        self.hit_box.setToolTip(tr("Ocorrências da pesquisa neste PDF"))
         hits = QHBoxLayout(self.hit_box)
         hits.setContentsMargins(2, 0, 2, 0)
         hits.setSpacing(0)
-        self.btn_hit_prev = tool_button("▲", "Ocorrência anterior neste PDF")
+        self.btn_hit_prev = tool_button("▲", tr("Ocorrência anterior neste PDF"))
         self.hit_label = QLabel()
         self.hit_label.setObjectName("hitLabel")
         self.hit_label.setMinimumWidth(self.fontMetrics().horizontalAdvance("000 de 000") + 10)
         self.hit_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.btn_hit_next = tool_button("▼", "Próxima ocorrência neste PDF")
+        self.btn_hit_next = tool_button("▼", tr("Próxima ocorrência neste PDF"))
         hits.addWidget(self.btn_hit_prev)
         hits.addWidget(self.hit_label)
         hits.addWidget(self.btn_hit_next)
         self.hit_box.hide()
 
-        self.btn_close = tool_button("✕", "Fechar este PDF")
+        self.btn_close = tool_button("✕", tr("Fechar este PDF"))
 
         row.addWidget(self.name_label, 1)
         row.addSpacing(6)
@@ -166,6 +195,9 @@ class PdfPane(QFrame):
         self.scroll.viewport().setObjectName("pageViewport")
         self.scroll.viewport().installEventFilter(self)
         self.scroll.verticalScrollBar().valueChanged.connect(self._on_scroll)
+        self.image.installEventFilter(self)
+        self.image.setMouseTracking(True)
+        self.rubber = QRubberBand(QRubberBand.Shape.Rectangle, self.image)
 
     # --- API pública ----------------------------------------------------------
     def render(
@@ -175,9 +207,15 @@ class PdfPane(QFrame):
         page_hits: List[Hit],
         current_hit: Optional[Hit],
         zoom: ZoomMode,
+        page_diffs: List[DiffMark] = (),
+        current_diff: Optional[DiffMark] = None,
+        annotations: List[Annotation] = (),
     ) -> None:
         """Exibe a página `page` (None = posição fora do documento)."""
-        args: RenderArgs = (page, raw_page, tuple(page_hits), current_hit, zoom)
+        self._annotations = tuple(annotations)
+        annot_key = tuple((a.id, a.kind, tuple(a.rects), a.text) for a in annotations)
+        args: RenderArgs = (page, raw_page, tuple(page_hits), current_hit, zoom,
+                            tuple(page_diffs), current_diff, annot_key)
         if args == self._args:
             return
         self._args = args
@@ -188,12 +226,13 @@ class PdfPane(QFrame):
         if not active:
             return
         if count == 0:
-            text, tip, state = "nenhuma", "Nenhuma ocorrência neste PDF", "none"
+            text, tip, state = tr("nenhuma"), tr("Nenhuma ocorrência neste PDF"), "none"
         elif position < 0:
-            text = f"{count} ocorr."
-            tip, state = f"{count} ocorrência(s) neste PDF — use ▼ para ir à próxima", "found"
+            text = tr("{n} ocorr.", n=count)
+            tip, state = tr("{n} ocorrência(s) neste PDF — use ▼ para ir à próxima", n=count), "found"
         else:
-            text, tip, state = f"{position + 1} de {count}", f"Ocorrência {position + 1} de {count} neste PDF", "found"
+            text = tr("{pos} de {n}", pos=position + 1, n=count)
+            tip, state = tr("Ocorrência {pos} de {n} neste PDF", pos=position + 1, n=count), "found"
         self.hit_label.setText(text)
         self.hit_label.setToolTip(tip)
         if self.hit_label.property("state") != state:
@@ -215,7 +254,7 @@ class PdfPane(QFrame):
     def _render_now(self) -> None:
         if self._args is None or self.session.doc is None:
             return
-        page_no, raw, page_hits, current, zoom = self._args
+        page_no, raw, page_hits, current, zoom, page_diffs, current_diff, _ = self._args
         count = self.session.page_count
 
         self.page_spin.blockSignals(True)
@@ -232,10 +271,16 @@ class PdfPane(QFrame):
         scale = self._scale_for(page.rect, zoom)
         self.last_scale = scale
         dpr = self.devicePixelRatioF() or 1.0
+        self._scale, self._dpr = scale, dpr
         image = self._page_image(page, page_no, scale * dpr)
-        if page_hits:
+        if page_hits or page_diffs or self._annotations:
             image = image.copy()
-            self._paint_hits(image, page, page_hits, current, scale * dpr, dpr)
+            if self._annotations:
+                self._paint_annotations(image, page, self._annotations, scale * dpr, dpr)
+            if page_diffs:
+                self._paint_diffs(image, page, page_diffs, current_diff, scale * dpr, dpr)
+            if page_hits:
+                self._paint_hits(image, page, page_hits, current, scale * dpr, dpr)
 
         pixmap = QPixmap.fromImage(image)
         pixmap.setDevicePixelRatio(dpr)
@@ -244,11 +289,12 @@ class PdfPane(QFrame):
         self.image.resize(round(image.width() / dpr), round(image.height() / dpr))
 
         page_changed = page_no != self._shown_page
-        hit_changed = current is not None and current != self._shown_hit
+        focus = current if current is not None else current_diff
+        hit_changed = focus is not None and focus != self._shown_hit
         self._shown_page = page_no
-        self._shown_hit = current
+        self._shown_hit = focus
         if hit_changed:
-            r = fitz.Rect(current.rects[0]) * page.rotation_matrix
+            r = fitz.Rect(focus.rects[0]) * page.rotation_matrix
             target = ((r.x0 + r.x1) / 2 * scale, (r.y0 + r.y1) / 2 * scale)
             QTimer.singleShot(0, lambda: self._position_view(target))
         elif page_changed:
@@ -259,9 +305,9 @@ class PdfPane(QFrame):
         self._shown_hit = None
         self.image.setPixmap(QPixmap())
         if raw < 0:
-            self.image.setText("Este PDF começa mais adiante.\nUse ▶ neste painel para trazê-lo para cá.")
+            self.image.setText(tr("Este PDF começa mais adiante.\nUse ▶ neste painel para trazê-lo para cá."))
         else:
-            self.image.setText(f"Fim do documento ({count} páginas).\nUse ◀ neste painel para voltar.")
+            self.image.setText(tr("Fim do documento ({n} páginas).\nUse ◀ neste painel para voltar.", n=count))
         self.image.resize(self.scroll.viewport().size())
 
     def _scale_for(self, rect: fitz.Rect, zoom: ZoomMode) -> float:
@@ -305,6 +351,131 @@ class PdfPane(QFrame):
                 painter.drawRect(QRectF(r.x0 * scale, r.y0 * scale, r.width * scale, r.height * scale).adjusted(-2, -2, 2, 2))
         painter.end()
 
+    @staticmethod
+    def _qrect(rect, matrix, scale: float) -> QRectF:
+        r = (fitz.Rect(rect) * matrix).normalize()
+        return QRectF(r.x0 * scale, r.y0 * scale, r.width * scale, r.height * scale)
+
+    @classmethod
+    def _paint_diffs(cls, image: QImage, page: fitz.Page, marks, current: Optional[DiffMark],
+                     scale: float, dpr: float) -> None:
+        painter = QPainter(image)
+        matrix = page.rotation_matrix
+        for mark in marks:
+            fill, line = DIFF_STYLE.get(mark.kind, DIFF_STYLE[CHANGED])
+            for rect in mark.rects:
+                q = cls._qrect(rect, matrix, scale).adjusted(-1, -1, 1, 1)
+                painter.fillRect(q, fill)
+                painter.setPen(QPen(line, 1.5 * dpr))
+                painter.drawLine(q.bottomLeft(), q.bottomRight())
+                if mark.kind == REMOVED:   # tachado
+                    painter.drawLine(QPointF(q.left(), q.center().y()), QPointF(q.right(), q.center().y()))
+            if mark == current:
+                painter.setPen(QPen(CURRENT_DIFF_PEN, 2 * dpr, Qt.PenStyle.DashLine))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                for rect in mark.rects:
+                    painter.drawRect(cls._qrect(rect, matrix, scale).adjusted(-3, -3, 3, 3))
+        painter.end()
+
+    @classmethod
+    def _paint_annotations(cls, image: QImage, page: fitz.Page, annotations, scale: float, dpr: float) -> None:
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        matrix = page.rotation_matrix
+        for a in annotations:
+            if a.kind == HIGHLIGHT:
+                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Multiply)
+                for rect in a.rects:
+                    painter.fillRect(cls._qrect(rect, matrix, scale), ANNOT_FILL)
+                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+            else:
+                q = cls._qrect(a.rects[0], matrix, scale)
+                painter.setBrush(NOTE_FILL)
+                painter.setPen(QPen(NOTE_PEN, 1.5 * dpr))
+                painter.drawRoundedRect(q, 3 * dpr, 3 * dpr)
+                painter.setPen(QPen(NOTE_PEN, 1.2 * dpr))
+                for k in (0.33, 0.5, 0.67):   # "linhas" do bilhete
+                    y = q.top() + q.height() * k
+                    painter.drawLine(QPointF(q.left() + q.width() * 0.22, y), QPointF(q.right() - q.width() * 0.22, y))
+        painter.end()
+
+    def annotation_tooltip(self, x: float, y: float) -> str:
+        from app.services.annotations import find_at
+
+        page = self._shown_page
+        found = find_at(self._annotations, page, x, y) if page is not None else None
+        return found.text if found is not None else ""
+
+    # --- coordenadas ------------------------------------------------------------
+    def to_page_point(self, pos: QPoint) -> Optional[Tuple[float, float]]:
+        """Converte um ponto da imagem (pixels) para coordenadas da página sem rotação."""
+        if self._shown_page is None or self.session.doc is None:
+            return None
+        pix = self.image.pixmap()
+        if pix is None or pix.isNull():
+            return None
+        # a imagem pode estar centralizada dentro do QLabel
+        w = pix.width() / self._dpr
+        h = pix.height() / self._dpr
+        ox = (self.image.width() - w) / 2
+        oy = (self.image.height() - h) / 2
+        px = (pos.x() - ox) / self._scale
+        py = (pos.y() - oy) / self._scale
+        page = self.session.doc[self._shown_page]
+        point = fitz.Point(px, py) * page.derotation_matrix
+        return point.x, point.y
+
+    def _image_event(self, event: QEvent) -> bool:
+        etype = event.type()
+        if etype == QEvent.Type.MouseButtonPress:
+            pos = event.position().toPoint()
+            if event.button() == Qt.MouseButton.RightButton:
+                point = self.to_page_point(pos)
+                if point is not None:
+                    self.annotation_menu.emit(self.index, self._shown_page, point[0], point[1],
+                                              event.globalPosition().toPoint())
+                return True
+            if event.button() == Qt.MouseButton.LeftButton and self.tool == TOOL_NOTE:
+                point = self.to_page_point(pos)
+                if point is not None:
+                    self.note_requested.emit(self.index, self._shown_page, point[0], point[1])
+                return True
+            if event.button() == Qt.MouseButton.LeftButton and self.tool == TOOL_HIGHLIGHT:
+                self._drag_start = pos
+                self.rubber.setGeometry(QRect(pos, QSize()))
+                self.rubber.show()
+                return True
+        elif etype == QEvent.Type.MouseMove:
+            pos = event.position().toPoint()
+            if self._drag_start is not None:
+                self.rubber.setGeometry(QRect(self._drag_start, pos).normalized())
+                return True
+            point = self.to_page_point(pos)
+            self.image.setToolTip(self.annotation_tooltip(*point) if point is not None else "")
+        elif etype == QEvent.Type.MouseButtonRelease and self._drag_start is not None:
+            self.finish_highlight(self._drag_start, event.position().toPoint())
+            return True
+        return False
+
+    def finish_highlight(self, start: QPoint, end: QPoint) -> None:
+        self._drag_start = None
+        self.rubber.hide()
+        a = self.to_page_point(start)
+        b = self.to_page_point(end)
+        if a is None or b is None or self._shown_page is None:
+            return
+        rect = (min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
+        self.highlight_requested.emit(self.index, self._shown_page, rect)
+
+    def set_tool(self, tool: str) -> None:
+        self.tool = tool
+        cursor = Qt.CursorShape.ArrowCursor
+        if tool == TOOL_HIGHLIGHT:
+            cursor = Qt.CursorShape.IBeamCursor
+        elif tool == TOOL_NOTE:
+            cursor = Qt.CursorShape.CrossCursor
+        self.image.setCursor(cursor)
+
     def _position_view(self, target: Optional[Tuple[float, float]]) -> None:
         self._programmatic = True
         try:
@@ -329,6 +500,8 @@ class PdfPane(QFrame):
         self.scrolled.emit(self.index, value / maximum if maximum else 0.0)
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802
+        if obj is self.image and self._image_event(event):
+            return True
         if (
             obj is self.scroll.viewport()
             and event.type() == QEvent.Type.Wheel

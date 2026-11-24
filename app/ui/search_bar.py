@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.i18n import tr
+
 from typing import Optional
 
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
@@ -20,28 +22,28 @@ class SearchBar(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
 
-        label = QLabel("&Pesquisar:")
+        label = QLabel(tr("&Pesquisar:"))
         self.edit = QLineEdit()
-        self.edit.setPlaceholderText("Palavra ou frase — busca em todos os PDFs (Ctrl+F)")
+        self.edit.setPlaceholderText(tr("Palavra ou frase — busca em todos os PDFs (Ctrl+F)"))
         self.edit.setClearButtonEnabled(True)
         self.edit.setMinimumWidth(340)
         self.edit.setMaximumWidth(560)
-        self.edit.setAccessibleName("Pesquisar em todos os PDFs")
+        self.edit.setAccessibleName(tr("Pesquisar em todos os PDFs"))
         label.setBuddy(self.edit)
 
         self.btn_prev = QToolButton()
         self.btn_prev.setArrowType(Qt.ArrowType.UpArrow)
-        self.btn_prev.setToolTip("Ocorrência anterior em cada PDF (Shift+Enter ou Shift+F3)")
-        self.btn_prev.setAccessibleName("Ocorrência anterior em cada PDF")
+        self.btn_prev.setToolTip(tr("Ocorrência anterior em cada PDF (Shift+Enter ou Shift+F3)"))
+        self.btn_prev.setAccessibleName(tr("Ocorrência anterior em cada PDF"))
         self.btn_next = QToolButton()
         self.btn_next.setArrowType(Qt.ArrowType.DownArrow)
-        self.btn_next.setToolTip("Próxima ocorrência em cada PDF (Enter ou F3)")
-        self.btn_next.setAccessibleName("Próxima ocorrência em cada PDF")
+        self.btn_next.setToolTip(tr("Próxima ocorrência em cada PDF (Enter ou F3)"))
+        self.btn_next.setAccessibleName(tr("Próxima ocorrência em cada PDF"))
 
         menu = QMenu(self)
-        self.act_case = menu.addAction("Diferenciar maiúsculas e minúsculas")
-        self.act_whole = menu.addAction("Somente palavras inteiras")
-        self.act_accents = menu.addAction("Ignorar acentos (ação = acao)")
+        self.act_case = menu.addAction(tr("Diferenciar maiúsculas e minúsculas"))
+        self.act_whole = menu.addAction(tr("Somente palavras inteiras"))
+        self.act_accents = menu.addAction(tr("Ignorar acentos (ação = acao)"))
         for action in (self.act_case, self.act_whole, self.act_accents):
             action.setCheckable(True)
         self.act_accents.setChecked(True)
@@ -49,8 +51,8 @@ class SearchBar(QWidget):
             action.toggled.connect(self._on_options_toggled)
 
         self.btn_options = QToolButton()
-        self.btn_options.setText("Opções")
-        self.btn_options.setToolTip("Opções de pesquisa")
+        self.btn_options.setText(tr("Opções"))
+        self.btn_options.setToolTip(tr("Opções de pesquisa"))
         self.btn_options.setMenu(menu)
         self.btn_options.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
 

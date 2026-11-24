@@ -55,10 +55,20 @@ def window(qtbot, tmp_path):
     from app.ui.main_window import MainWindow
 
     settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
-    w = MainWindow(settings=settings)
+    w = MainWindow(settings=settings, data_dir=tmp_path / "dados")
     w.notifications = []
     w._notify = lambda kind, title, text: w.notifications.append((kind, title, text))
     qtbot.addWidget(w)
     w.resize(1200, 800)
     w.show()
     return w
+
+
+@pytest.fixture(autouse=True)
+def _portuguese_ui():
+    """Os testes conferem textos em português; os de inglês trocam o idioma explicitamente."""
+    from app import i18n
+
+    i18n.set_language("pt")
+    yield
+    i18n.set_language("pt")
