@@ -1,3 +1,5 @@
+# Versões exatas usadas no build. Conferido na v0.2.0: nenhuma dependência nova
+# (o OCR usa o Tesseract instalado à parte, chamado pelo PyMuPDF já listado aqui).
 altgraph==0.17.5
 colorama==0.4.6
 exceptiongroup==1.3.1

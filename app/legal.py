@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.i18n import tr
+
 import platform
 import sys
 from dataclasses import dataclass
@@ -59,7 +61,7 @@ def read_license(file_name: str) -> str:
     try:
         return (LICENSES_DIR / file_name).read_text(encoding="utf-8")
     except OSError:
-        return f"Arquivo de licença não encontrado: {file_name}"
+        return tr("Arquivo de licença não encontrado: {name}", name=file_name)
 
 
 def components() -> List[Component]:
@@ -69,10 +71,10 @@ def components() -> List[Component]:
 
     items = [
         Component("PDF Compare", __version__, "AGPL-3.0-or-later", "AGPL-3.0.txt",
-                  "Os autores do PDF Compare", __url__),
-        Component("PyMuPDF", fitz.VersionBind, "AGPL-3.0 (ou licença comercial)", "AGPL-3.0.txt",
+                  tr("Os autores do PDF Compare"), __url__),
+        Component("PyMuPDF", fitz.VersionBind, tr("AGPL-3.0 (ou licença comercial)"), "AGPL-3.0.txt",
                   "Artifex Software", "https://pymupdf.readthedocs.io"),
-        Component("MuPDF", fitz.VersionFitz, "AGPL-3.0 (ou licença comercial)", "AGPL-3.0.txt",
+        Component("MuPDF", fitz.VersionFitz, tr("AGPL-3.0 (ou licença comercial)"), "AGPL-3.0.txt",
                   "Artifex Software", "https://mupdf.com"),
         Component("PySide6 (Qt for Python)", PySide6.__version__, "LGPL-3.0", "LGPL-3.0.txt",
                   "The Qt Company", "https://www.qt.io/qt-for-python"),
@@ -81,6 +83,6 @@ def components() -> List[Component]:
                   "Python Software Foundation", "https://www.python.org"),
     ]
     if is_frozen():
-        items.append(Component("PyInstaller (carregador)", "", "GPL-2.0 com exceção de carregador",
-                               "PyInstaller.txt", "Equipe PyInstaller", "https://pyinstaller.org"))
+        items.append(Component(tr("PyInstaller (carregador)"), "", tr("GPL-2.0 com exceção de carregador"),
+                               "PyInstaller.txt", tr("Equipe PyInstaller"), "https://pyinstaller.org"))
     return items
