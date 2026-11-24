@@ -8,6 +8,8 @@ Os arquivos são processados somente no computador local.
 
 Código-fonte: <https://github.com/PedroHTF/pdf-compare>
 
+Gostou? [☕ Pague um café para o autor](https://www.buymeacoffee.com/phtf)
+
 ## Download
 
 Baixe a versão mais recente em **[Releases](https://github.com/PedroHTF/pdf-compare/releases/latest)**:
