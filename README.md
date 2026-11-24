@@ -1,211 +1,225 @@
 # PDF Compare
 
-Aplicativo para Windows que exibe de **2 a 6 PDFs lado a lado**, pesquisa em todos ao
-mesmo tempo e avança ou retrocede página por página, em todos juntos ou em cada um separadamente.
-Também destaca as diferenças de texto entre as versões, permite anotar as páginas sem alterar
-os arquivos e exporta a comparação como PDF ou PNG.
-Os arquivos são processados somente no computador local.
+**English** · [Português](README.pt-BR.md)
 
-Código-fonte: <https://github.com/PedroHTF/pdf-compare>
+A Windows app that shows **2 to 6 PDFs side by side**, searches all of them at once and moves
+page by page through all of them together or through each one separately.
+It also highlights text differences between versions, lets you mark up pages (highlights,
+shapes, text boxes, callouts, stamps and notes) without changing the files, and exports the
+comparison as PDF or PNG. Files are processed only on your computer.
 
-Gostou? [☕ Pague um café para o autor](https://www.buymeacoffee.com/phtf)
+Source code: <https://github.com/PedroHTF/pdf-compare>
+
+Like it? [☕ Buy the author a coffee](https://www.buymeacoffee.com/phtf)
 
 ## Download
 
-Baixe a versão mais recente em **[Releases](https://github.com/PedroHTF/pdf-compare/releases/latest)**:
+Get the latest version from **[Releases](https://github.com/PedroHTF/pdf-compare/releases/latest)**:
 
-- `PDFCompare-Setup-<versão>.exe`: instalador para Windows (recomendado). Cria atalho no Menu Iniciar,
-  aparece em "Abrir com" para PDFs e abre arquivos de sessão `.pdfcompare` com duplo clique.
-- `PDFCompare-<versão>-portable.zip`: versão portátil; extraia e rode `PDFCompare.exe`.
-- `codigo-fonte-PDFCompare-<versão>.zip`: código-fonte completo (AGPL-3.0).
+- `PDFCompare-Setup-<version>.exe`: Windows installer (recommended). Adds a Start Menu shortcut,
+  appears in "Open with" for PDFs and opens `.pdfcompare` session files with a double-click.
+- `PDFCompare-<version>-portable.zip`: portable version; extract it and run `PDFCompare.exe`.
+- `codigo-fonte-PDFCompare-<version>.zip`: complete source code (AGPL-3.0).
 
-Na primeira execução o Windows SmartScreen pode avisar que o programa não é reconhecido
-(ele não tem assinatura digital paga): clique em **Mais informações › Executar assim mesmo**.
+On first run, Windows SmartScreen may warn that the program is not recognized (it has no paid
+code-signing certificate): click **More info › Run anyway**.
 
-## Como usar
+The interface is available in English and Portuguese. On first run it follows the Windows
+language (Portuguese if Windows is in Portuguese, English otherwise). To switch, use
+**Tools › Idioma / Language** or **Edit › Settings…** and restart the program.
 
-| Quero… | Como |
+## How to use
+
+| I want to… | How |
 |---|---|
-| Abrir PDFs | Arraste os arquivos para a janela, ou **Adicionar PDFs…** (Ctrl+O). Até 6. |
-| Abrir uma pasta inteira | **Arquivo › Abrir pasta…** (Ctrl+Shift+O): abre os PDFs da pasta em ordem de nome (até 6) |
-| Reabrir arquivos usados antes | **Arquivo › Abertos recentemente** (PDFs e sessões) |
-| Salvar e retomar o trabalho | **Arquivo › Salvar sessão…** (Ctrl+S) guarda os PDFs, a página de cada um e o zoom num arquivo `.pdfcompare`. **Abrir sessão…** restaura tudo |
-| Abrir PDF com senha | O programa pede a senha (3 tentativas). **Pular este arquivo** abre os demais. A senha não é guardada. |
-| Avançar/voltar **todos** juntos | **◀ Anterior / Próxima ▶** na barra, ou setas ← → / Page Up / Page Down |
-| Avançar/voltar **um** PDF só | **◀ ▶** no cabeçalho do painel, ou digite o número da página no campo do painel |
-| Desfazer ajustes individuais | **Realinhar** (Ctrl+L): todos voltam a mostrar a mesma página |
-| Pesquisar em todos | Digite na caixa **Pesquisar** (Ctrl+F). Cada painel mostra quantas ocorrências tem |
-| Ir à próxima ocorrência em **todos** | Enter ou F3 (Shift+Enter / Shift+F3 volta) |
-| Ir à próxima ocorrência em **um** PDF | **▲ ▼** na etiqueta amarela do painel |
-| Ver todas as ocorrências em lista | **Lista de ocorrências** (Ctrl+Shift+F): trecho e página de cada uma; clique para ir até ela |
-| Ver as diferenças de texto | **Comparar texto** (Ctrl+D). F7 / Shift+F7 vão para a próxima / anterior diferença |
-| Destacar um trecho | **Destacar** (Ctrl+H) e arraste sobre o texto |
-| Adicionar uma nota | **Nota** (Ctrl+M) e clique no ponto da página. Passe o mouse sobre a nota para ler |
-| Editar ou remover anotação | Botão direito sobre ela |
-| Exportar | **Exportar…** (Ctrl+E): comparação lado a lado (posição atual ou todas), página atual de cada PDF, ou cada PDF com as anotações. PDF ou PNG |
-| Pesquisar em PDF escaneado | **Ferramentas › Reconhecer texto em PDFs escaneados (OCR)** — requer o Tesseract (veja abaixo) |
-| Zoom | Ctrl + roda do mouse, Ctrl++ / Ctrl+-, ou a lista de zoom (largura, página inteira, %) |
-| Rolagem acompanhada | **Rolagem vinculada** (ligada por padrão): rolar um PDF rola os outros |
-| Trocar o idioma (English / Português) | **Ferramentas › Idioma / Language** e reinicie o programa |
-| Ver todos os atalhos | F1 |
+| Open PDFs | Drag the files onto the window, or **Add PDFs…** (Ctrl+O). Up to 6. |
+| Open a whole folder | **File › Open folder…** (Ctrl+Shift+O): opens the folder's PDFs in name order (up to 6) |
+| Reopen files used before | **File › Open recent** (PDFs and sessions) |
+| Save and resume my work | **File › Save session…** (Ctrl+S) stores the PDFs, each one's page and the zoom in a `.pdfcompare` file. **Open session…** restores everything |
+| Open a password-protected PDF | The program asks for the password (3 attempts). **Skip this file** opens the others. The password is not stored. |
+| Move **all** PDFs forward/back | **◀ Previous / Next ▶** on the toolbar, or ← → / Page Up / Page Down |
+| Move **one** PDF only | **◀ ▶** in the pane header, or type the page number in the pane's field |
+| Undo per-PDF adjustments | **Realign** (Ctrl+L): all PDFs show the same page again |
+| Search all PDFs | Type in the **Search** box (Ctrl+F). Each pane shows how many matches it has |
+| Go to the next match in **all** PDFs | Enter or F3 (Shift+Enter / Shift+F3 goes back) |
+| Go to the next match in **one** PDF | **▲ ▼** on the pane's yellow label |
+| See all matches in a list | **Match list** (Ctrl+Shift+F): snippet and page of each one; click to go there |
+| See text differences | **Compare text** (Ctrl+D). F7 / Shift+F7 go to the next / previous difference |
+| Highlight, underline or strike out text | Pick the tool on the **markup toolbar** (Highlight: Ctrl+H) and drag over the text |
+| Draw a rectangle, ellipse, line, arrow or freehand | Pick the tool and drag on the page |
+| Draw a polygon | Click each vertex and double-click to finish (Esc cancels) |
+| Write on the page | **Text box** (drag the area) or **Callout** (drag from the point to where the text goes) |
+| Stamp ("Approved", "Review"…) | **Stamp**: the arrow next to it picks the text or lets you type another one |
+| Add a note | **Note** (Ctrl+M) and click on the page. Hover over the note to read it |
+| Move, resize or edit | **Select** tool (or Esc): drag the mark or its corner handles; double-click edits the text |
+| Copy, paste, delete | Ctrl+C, Ctrl+V (pastes on the page shown), Delete. Right-click shows the options |
+| Undo / redo | Ctrl+Z / Ctrl+Y |
+| Change color, fill, width, opacity, font | Markup toolbar: applies to the next marks and to the selected one |
+| See all marks | **View › Marks list** (Ctrl+Shift+M), filtered by type and color |
+| Settings (languages, colors, default style) | **Edit › Settings…** (Ctrl+,) |
+| Export | **Export…** (Ctrl+E): side-by-side comparison (current position or all), current page of each PDF, or each PDF with its marks. PDF or PNG |
+| Search scanned PDFs | **Tools › Recognize text in scanned PDFs (OCR)**, requires Tesseract (see below) |
+| Zoom | Ctrl + mouse wheel, Ctrl++ / Ctrl+-, or the zoom list (width, whole page, %) |
+| Linked scrolling | **Linked scrolling** (on by default): scrolling one PDF scrolls the others |
+| See all shortcuts | F1 |
 
-**Modelo de navegação.** Todos os PDFs compartilham uma posição. Os botões de um painel
-deslocam só aquele documento. Depois disso, ao avançar todos juntos, a diferença é mantida,
-o que permite comparar versões com páginas a mais ou a menos. Quando um PDF não tem página
-naquela posição, o painel avisa e indica como trazê-lo de volta.
+**Navigation model.** All PDFs share one position. A pane's buttons shift only that document.
+After that, moving all PDFs together keeps the offset, so you can compare versions with extra
+or missing pages. When a PDF has no page at that position, the pane says so and shows how to
+bring it back.
 
-**Pesquisa.** Por padrão ignora maiúsculas e acentos ("acao" encontra "Ação"). Em **Opções**
-dá para diferenciar maiúsculas, exigir palavra inteira ou considerar acentos. Também encontra
-frases e palavras hifenizadas na quebra de linha. PDFs escaneados (somente imagem) passam a
-ser pesquisáveis com o OCR ligado.
+**Search.** By default it ignores case and accents ("acao" finds "Ação"). Under **Options** you
+can match case, require whole words or match accents. It also finds phrases and words
+hyphenated across lines. Scanned (image-only) PDFs become searchable with OCR on.
 
-**Idioma.** A interface existe em inglês e em português. Na primeira execução o programa usa o
-idioma do Windows (português se o sistema estiver em português; inglês nos demais casos). Para
-trocar, use **Ferramentas › Idioma / Language** e reinicie o programa.
+**Compare text.** The first PDF opened is the reference; each of the others is compared with it,
+word by word. Default colors: **green** = added, **red** (struck through) = removed,
+**blue** = changed. The comparison ignores line and page breaks (text that only moved to another
+page is not a difference) and punctuation at the edges of words; case and accents count. The
+status bar shows the total per PDF. Colors can be changed in
+**Edit › Settings… › Comparison colors**.
 
-**Comparar texto.** O primeiro PDF aberto é a referência; cada um dos outros é comparado com ele,
-palavra por palavra. Cores: **verde** = incluído, **vermelho** (tachado) = removido,
-**azul** = alterado. A comparação ignora quebras de linha e de página (texto que só mudou de
-página não aparece como diferença) e a pontuação nas bordas das palavras; maiúsculas e acentos
-contam. A barra de status mostra o total por PDF.
+**Marks.** Highlights, shapes, text, stamps and notes are stored in the program's data folder
+(`%APPDATA%\PDFCompare\PDF Compare\anotacoes`), one file per document, identified by the PDF's
+content, so they come back even if the file is renamed or moved. **The original PDF is never
+changed.** To take the marks with you, use **Export… › Each whole PDF with annotations** (creates a
+new PDF with real annotations, editable in other readers) or check **Include my marks** in
+the other export options.
 
-**Anotações.** Destaques e notas ficam guardados na pasta de dados do programa
-(`%APPDATA%\PDFCompare\PDF Compare\anotacoes`), um arquivo por documento, identificado pelo
-conteúdo do PDF — reaparecem mesmo se o arquivo for renomeado ou movido. **O PDF original
-nunca é alterado.** Para levar as anotações junto, use **Exportar… › Cada PDF inteiro com as
-anotações** (gera um novo PDF com anotações de verdade, editáveis em outros leitores) ou marque
-**Incluir minhas anotações** nas outras opções de exportação.
+**Export.** In PDF the text stays selectable; PNG creates one image per position
+(`comparacao_001.png`, `comparacao_002.png`…) at the chosen resolution.
 
-**Exportar.** Em PDF o texto continua selecionável; em PNG gera uma imagem por posição
-(`comparacao_001.png`, `comparacao_002.png`…), com a resolução escolhida.
+**OCR (optional).** Uses [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) through
+PyMuPDF. It does not ship with the program: install it separately (on Windows, the
+[UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) installer); English is included and,
+for PDFs in Portuguese, also select the **Portuguese** language during installation.
+The program looks for Tesseract in the `TESSDATA_PREFIX` variable and in the default install folders.
+The default OCR language is English, `eng` (change it in **Edit › Settings…** or
+**Tools › OCR language…**, for example `por` or `eng+por`).
+Only pages with images and no text go through OCR, which takes a few seconds per page; the
+result is used for searching and comparing, and the PDF is not changed. Without Tesseract, the
+program says so and keeps working normally.
 
-**OCR (opcional).** Usa o [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) por meio do
-PyMuPDF. Ele não vem com o programa: instale-o à parte (no Windows, o instalador da
-[UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki)); o inglês já vem incluído e,
-para PDFs em português, marque também o idioma **Portuguese** na instalação.
-O programa procura o Tesseract na variável `TESSDATA_PREFIX` e nas pastas padrão de instalação.
-O idioma padrão do OCR é o inglês, `eng` (mude em **Ferramentas › Idioma do OCR…**, por exemplo
-`por` ou `eng+por`).
-Só as páginas sem texto e com imagem passam pelo OCR, que leva alguns segundos por página; o
-resultado serve para pesquisar e comparar, e o PDF não é alterado. Sem o Tesseract, o programa
-avisa e continua funcionando normalmente.
+## License
 
-## Licença
+Free software under the **GNU AGPL v3 or later** (file [LICENSE](LICENSE)). This license is
+required because the program uses PyMuPDF/MuPDF, which is AGPL. In the program: **Help › License and credits…**.
 
-Software livre sob a **GNU AGPL v3 ou posterior** (arquivo [LICENSE](LICENSE)). A licença é
-obrigatória porque o programa usa o PyMuPDF/MuPDF, que é AGPL. No programa: **Ajuda › Licença e créditos…**.
+- **You may:** use it for any purpose (including commercial), study, modify and distribute it, free or paid.
+- **When distributing:** provide the complete source code, keep the copyright notices and the
+  license, and keep modified versions under the AGPL. Using without distributing creates no obligation.
+- **How to comply:** `build.ps1` already puts `LICENCA.txt` and `codigo-fonte-PDFCompare-<version>.zip`
+  inside `dist\PDFCompare`. If you distribute the whole folder, the source code goes with it.
+  The code is also published at <https://github.com/PedroHTF/pdf-compare>, and the link appears
+  in the program (**About** and **License and credits**).
+- **Authorship:** replace "Os autores do PDF Compare" with your name in `app/__init__.py` (`__author__`).
 
-- **Pode:** usar para qualquer fim (inclusive comercial), estudar, modificar e distribuir, de graça ou cobrando.
-- **Ao distribuir:** entregar o código-fonte completo, manter os avisos de copyright e a licença,
-  e manter versões modificadas sob a AGPL. Usar sem distribuir não gera obrigação.
-- **Como cumprir:** o `build.ps1` já coloca `LICENCA.txt` e `codigo-fonte-PDFCompare-<versão>.zip`
-  dentro de `dist\PDFCompare`. Distribuindo a pasta inteira, o código-fonte vai junto.
-  O código também está publicado em <https://github.com/PedroHTF/pdf-compare>, e o link
-  aparece no programa (**Sobre** e **Licença e créditos**).
-- **Autoria:** troque "Os autores do PDF Compare" pelo seu nome em `app/__init__.py` (`__author__`).
+Third-party components and licenses: PyMuPDF/MuPDF (AGPL-3.0), PySide6/Qt (LGPL-3.0), Python (PSF)
+and the PyInstaller bootloader (GPL-2.0 with exception). Full texts are in `licenses/`.
+Tesseract OCR (Apache-2.0) is optional, installed by the user and not distributed with the program.
+The exact versions used in the build are in `requirements-lock.txt`.
 
-Componentes de terceiros e licenças: PyMuPDF/MuPDF (AGPL-3.0), PySide6/Qt (LGPL-3.0), Python (PSF)
-e o carregador do PyInstaller (GPL-2.0 com exceção). Os textos completos estão em `licenses/`.
-O Tesseract OCR (Apache-2.0) é opcional, instalado pelo usuário e não é distribuído com o programa.
-As versões exatas usadas no build estão em `requirements-lock.txt`.
-
-## Desenvolvimento
+## Development
 
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements-dev.txt
-python -m app.main                      # executar
-python -m app.main a.pdf b.pdf          # executar já abrindo arquivos
-python -m app.main trabalho.pdfcompare  # executar abrindo uma sessão salva
-python -m pytest                        # testes (lógica e interface, sem abrir janelas)
-                                        # os testes de OCR real só rodam se o Tesseract estiver instalado
+python -m app.main                      # run
+python -m app.main a.pdf b.pdf          # run opening files
+python -m app.main work.pdfcompare      # run opening a saved session
+python -m pytest                        # tests (logic and UI, no windows shown)
+                                        # real OCR tests only run if Tesseract is installed
 ```
 
-### Gerar o executável
+### Build the executable
 
 ```bash
 powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 
-O build roda os testes antes e gera `dist\PDFCompare\PDFCompare.exe`. Para distribuir,
-copie a pasta `dist\PDFCompare` inteira.
+The build runs the tests first and creates `dist\PDFCompare\PDFCompare.exe`. To distribute,
+copy the whole `dist\PDFCompare` folder.
 
-### Gerar o instalador
+### Build the installer
 
-Com o [Inno Setup 6](https://jrsoftware.org/isinfo.php) instalado, depois do `build.ps1`:
+With [Inno Setup 6](https://jrsoftware.org/isinfo.php) installed, after `build.ps1`:
 
 ```bash
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=0.2.0 installer.iss
 ```
 
-O instalador fica em `dist\installer\`.
+The installer goes to `dist\installer\`.
 
-### Publicar uma versão
+### Publish a version
 
-O GitHub gera tudo sozinho (`.github/workflows/release.yml`): testes, executável, instalador,
-pacote portátil e código-fonte. Para lançar:
+GitHub builds everything (`.github/workflows/release.yml`): tests, executable, installer,
+portable package and source code. To release:
 
-1. Atualize `__version__` em `app/__init__.py` e faça o merge na `main`.
-2. Crie e envie a tag com o mesmo número:
+1. Update `__version__` in `app/__init__.py` and merge into `main`.
+2. Create and push the tag with the same number:
    ```bash
    git tag v0.2.0
    git push origin v0.2.0
    ```
-3. Em alguns minutos a Release aparece em **Releases**, com os arquivos para download.
-   Se a tag não bater com `__version__`, o workflow para com erro.
+3. A few minutes later the Release appears under **Releases** with the files to download.
+   If the tag does not match `__version__`, the workflow stops with an error.
 
-Em cada pull request o mesmo workflow roda sem publicar nada; os arquivos gerados ficam em
-**Actions › (execução) › Artifacts**, para testar antes do lançamento.
+On each pull request the same workflow runs without publishing; the generated files are under
+**Actions › (run) › Artifacts**, for testing before the release.
 
-### Estrutura
+### Structure
 
 ```
 app/
-  main.py                  ponto de entrada
-  model/session.py         PDF aberto (arquivo + deslocamento de alinhamento)
-  services/navigation.py   posição global, ajustes por PDF, ocorrências (sem Qt)
-  services/text_index.py   extração de palavras com posição, normalização de texto
-  services/search.py       pesquisa de palavras e frases
-  services/indexer.py      indexação em segundo plano sem travar a interface (e OCR, se ligado)
-  services/text_diff.py    comparação de texto palavra por palavra
-  services/annotations.py  destaques e notas guardados fora do PDF; PDF anotado
-  services/export.py       exportação lado a lado e das páginas atuais (PDF/PNG)
-  services/workspace.py    abrir pasta, arquivos recentes e sessões (.pdfcompare)
-  services/ocr.py          OCR opcional com Tesseract (detecção e reconhecimento)
-  i18n.py                  idioma da interface (tr); i18n_en.py tem as traduções para o inglês
-  ui/main_window.py        janela, menus, barras, grade, arrastar e soltar
-  ui/pane.py               painel de um PDF (renderização, destaques, controles)
-  ui/search_bar.py         barra de pesquisa
-  ui/results_panel.py      lista de ocorrências (trecho + página)
-  ui/export_dialog.py      diálogo de exportação
-  ui/widgets.py            componentes auxiliares
-  ui/style.py              estilos (tema claro e escuro)
-  ui/resources.py          acesso ao ícone e ao logo
-  resources/logo.svg       logo (fonte); app.ico e logo_256.png são gerados a partir dele
-  legal.py                 dados de licença e componentes de terceiros
-  ui/license_dialog.py     janela "Licença e créditos"
-tools/make_icon.py         regenera app.ico e logo_256.png após editar o logo.svg
-installer.iss              configuração do instalador (Inno Setup)
-.github/workflows/         build automático e publicação de Releases
-tools/make_source_zip.py   gera o pacote de código-fonte que acompanha o .exe
-licenses/                  textos completos das licenças (AGPL, LGPL, GPL, PSF, PyInstaller)
-tests/                     testes de cada serviço e da interface
-samples/                   PDFs de exemplo
+  main.py                  entry point
+  model/session.py         open PDF (file + alignment offset)
+  services/navigation.py   global position, per-PDF adjustments, matches (no Qt)
+  services/text_index.py   word extraction with positions, text normalization
+  services/search.py       word and phrase search
+  services/indexer.py      background indexing without freezing the UI (and OCR, if on)
+  services/text_diff.py    word-by-word text comparison
+  services/annotations.py  marks (highlights, shapes, text, stamps, notes) kept outside the PDF; annotated PDF
+  services/preferences.py  comparison colors and default mark style
+  services/export.py       side-by-side and current-page export (PDF/PNG)
+  services/workspace.py    open folder, recent files and sessions (.pdfcompare)
+  services/ocr.py          optional OCR with Tesseract (detection and recognition)
+  i18n.py                  UI language (tr); i18n_en.py has the English translations
+  ui/main_window.py        window, menus, toolbars, grid, drag and drop
+  ui/pane.py               one PDF's pane (rendering, marks, controls)
+  ui/search_bar.py         search bar
+  ui/results_panel.py      match list (snippet + page)
+  ui/marks_panel.py        marks list with filters
+  ui/mark_widgets.py       color button and mark style bar
+  ui/settings_dialog.py    Settings window
+  ui/export_dialog.py      export dialog
+  ui/widgets.py            helper components
+  ui/style.py              styles (light and dark theme)
+  ui/resources.py          access to the icon and logo
+  resources/logo.svg       logo (source); app.ico and logo_256.png are generated from it
+  legal.py                 license data and third-party components
+  ui/license_dialog.py     "License and credits" window
+tools/make_icon.py         regenerates app.ico and logo_256.png after editing logo.svg
+installer.iss              installer configuration (Inno Setup)
+.github/workflows/         automatic build and Release publishing
+tools/make_source_zip.py   builds the source package that ships with the .exe
+licenses/                  full license texts (AGPL, LGPL, GPL, PSF, PyInstaller)
+tests/                     tests for each service and the UI
+samples/                   sample PDFs
 ```
 
-### Decisões técnicas
+### Technical decisions
 
-- **PyMuPDF** para renderização e extração de texto com coordenadas (necessárias para destacar).
-- A indexação roda em fatias de tempo na thread principal, porque o PyMuPDF não suporta
-  múltiplas threads. A interface continua respondendo e a pesquisa já funciona com as páginas
-  indexadas, atualizando quando termina.
-- Renderização só da página visível, com cache pequeno por painel e nitidez em telas de alta resolução.
-- Preferências (zoom, opções de pesquisa, tamanho da janela, última pasta, lista de ocorrências,
-  recentes, OCR) ficam salvas entre execuções.
-- A comparação de texto é feita em dois níveis (linhas, depois palavras dentro das linhas
-  diferentes) com `difflib`, para continuar rápida em documentos longos.
-- Os textos do código são escritos em português e passam por `tr()`; as traduções para o inglês
-  ficam em `app/i18n_en.py`. O teste `tests/test_i18n.py` falha se algum texto ficar sem tradução.
-- Toda a lógica nova (diferenças, anotações, exportação, sessões, OCR) fica em `app/services`,
-  sem Qt, e é testada diretamente.
+- **PyMuPDF** for rendering and extracting text with coordinates (needed for highlighting).
+- Indexing runs in time slices on the main thread, because PyMuPDF does not support multiple
+  threads. The UI stays responsive and search already works on the indexed pages, updating when
+  indexing finishes.
+- Only the visible page is rendered, with a small per-pane cache and sharp output on high-DPI screens.
+- Preferences (zoom, search options, window size, last folder, side lists, recent files, OCR,
+  mark colors and style) are saved between runs.
+- Text comparison works on two levels (lines, then words inside the differing lines) with
+  `difflib`, so it stays fast on long documents.
+- Source-code strings are written in Portuguese and go through `tr()`; English translations
+  are in `app/i18n_en.py`. `tests/test_i18n.py` fails if any string is left untranslated.
+- All core logic (differences, marks, export, sessions, OCR) lives in `app/services`, without
+  Qt, and is tested directly.

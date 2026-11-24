@@ -71,7 +71,7 @@ def test_window_in_english(qtbot, tmp_path, make_pdf):
     qtbot.addWidget(w)
     w._notify = lambda *a: None
     menus = [a.text() for a in w.menuBar().actions()]
-    assert menus == ["&File", "&Navigate", "&View", "&Tools", "&Help"]
+    assert menus == ["&File", "&Edit", "&Navigate", "&View", "&Tools", "&Help"]
     assert w.act_export.text() == "&Export…" and w.act_diff.text() == "Compare &text"
     assert "Open or drag" in w.hint_label.text()
     w.add_files([make_pdf("a.pdf", texts=["x"]), make_pdf("b.pdf", texts=["y"])])

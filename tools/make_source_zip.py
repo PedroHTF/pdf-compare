@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 from app.legal import SOURCE_ZIP_NAME  # noqa: E402
 
 INCLUDE_FILES = [
-    "LICENSE", "README.md", "run.py", "build.ps1", "installer.iss",
+    "LICENSE", "README.md", "README.pt-BR.md", "run.py", "build.ps1", "installer.iss",
     "requirements.txt", "requirements-dev.txt", "requirements-lock.txt", ".gitignore",
 ]
 INCLUDE_DIRS = ["app", "tests", "tools", "licenses", "samples", ".github"]

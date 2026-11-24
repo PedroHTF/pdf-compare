@@ -5,11 +5,12 @@ from __future__ import annotations
 from app.i18n import tr
 
 from collections import OrderedDict
-from typing import List, Optional, Tuple, Union
+import math
+from typing import Dict, List, Optional, Tuple, Union
 
 import fitz
 from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
+from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QFrame,
     QRubberBand,
@@ -24,7 +25,9 @@ from PySide6.QtWidgets import (
 )
 
 from app.model.session import DocumentSession
-from app.services.annotations import HIGHLIGHT, Annotation
+from app.services import annotations as am
+from app.services.annotations import HIGHLIGHT, Annotation, Color
+from app.services.preferences import DEFAULT_DIFF_COLORS, DEFAULT_STYLE, MarkStyle
 from app.services.search import Hit
 from app.services.text_diff import ADDED, CHANGED, REMOVED, DiffMark
 from app.ui.widgets import ElidedLabel
@@ -36,20 +39,32 @@ FIT_PAGE = "page"
 HIT_FILL = QColor(255, 213, 0, 100)
 CURRENT_FILL = QColor(255, 140, 0, 110)
 CURRENT_PEN = QColor(214, 92, 0)
-DIFF_STYLE = {   # preenchimento, sublinhado
-    ADDED: (QColor(52, 168, 83, 70), QColor(30, 130, 60)),
-    REMOVED: (QColor(234, 67, 53, 70), QColor(197, 34, 31)),
-    CHANGED: (QColor(66, 133, 244, 70), QColor(25, 103, 210)),
-}
-CURRENT_DIFF_PEN = QColor(60, 60, 60)
-ANNOT_FILL = QColor(255, 235, 59, 120)
-NOTE_FILL = QColor(255, 167, 38)
-NOTE_PEN = QColor(150, 80, 0)
+DIFF_STYLE: Dict[str, Tuple[QColor, QColor]] = {}   # tipo -> (preenchimento, sublinhado)
 
-# Ferramentas de anotação
-TOOL_NONE = ""
-TOOL_HIGHLIGHT = "highlight"
-TOOL_NOTE = "note"
+
+def qcolor(color: Color, alpha: int = 255) -> QColor:
+    return QColor(round(color[0] * 255), round(color[1] * 255), round(color[2] * 255), alpha)
+
+
+def set_diff_colors(colors: Dict[str, Color]) -> None:
+    """Cores da comparação de texto (Configurações). Vale para todos os painéis."""
+    for kind, color in colors.items():
+        DIFF_STYLE[kind] = (qcolor(color, 70), qcolor(color).darker(130))
+
+
+set_diff_colors(DEFAULT_DIFF_COLORS)
+CURRENT_DIFF_PEN = QColor(60, 60, 60)
+NOTE_PEN = QColor(150, 80, 0)
+SELECTION_PEN = QColor(25, 103, 210)
+HANDLE_PX = 7          # tamanho das alças de redimensionar (pixels de tela)
+
+# Ferramentas de anotação (o nome da ferramenta é o tipo da marcação que ela cria)
+TOOL_NONE = ""         # selecionar / mover / redimensionar
+TOOL_HIGHLIGHT = am.HIGHLIGHT
+TOOL_NOTE = am.NOTE
+DRAG_TOOLS = (am.RECT, am.ELLIPSE, am.LINE, am.ARROW, am.TEXTBOX, am.CALLOUT, am.INK)
+CALLOUT_SIZE = (150.0, 44.0)
+TEXTBOX_SIZE = (170.0, 40.0)
 
 MAX_RENDER_SIDE = 8000  # pixels; evita imagens gigantes em zoom muito alto
 
@@ -76,6 +91,12 @@ class PdfPane(QFrame):
     zoom_step = Signal(int)           # +1 / -1 (Ctrl + roda do mouse)
     scrolled = Signal(int, float)     # (painel, proporção vertical 0..1)
     highlight_requested = Signal(int, int, tuple)        # (painel, página, retângulo na página)
+    markup_requested = Signal(int, int, str, tuple)      # (painel, página, tipo, retângulo)
+    shape_drawn = Signal(int, object)                    # (painel, Annotation nova)
+    stamp_requested = Signal(int, int, float, float)     # (painel, página, x, y)
+    annotation_changed = Signal(int, object)             # (painel, Annotation movida/redimensionada)
+    selection_changed = Signal(int, str)                 # (painel, id da marcação ou "")
+    edit_requested = Signal(int, str)                    # (painel, id) — duplo clique
     note_requested = Signal(int, int, float, float)      # (painel, página, x, y)
     annotation_menu = Signal(int, int, float, float, QPoint)  # (painel, página, x, y, posição global)
 
@@ -96,6 +117,11 @@ class PdfPane(QFrame):
         self.tool = TOOL_NONE
         self._annotations: Tuple[Annotation, ...] = ()
         self._drag_start: Optional[QPoint] = None
+        self.mark_style: MarkStyle = DEFAULT_STYLE
+        self.selected_id = ""
+        self._preview: Optional[Annotation] = None
+        self._gesture: Optional[dict] = None          # desenho / movimento / redimensionamento
+        self._polygon: List[Tuple[float, float]] = []
         self._scale = 1.0
         self._dpr = 1.0
 
@@ -213,13 +239,17 @@ class PdfPane(QFrame):
     ) -> None:
         """Exibe a página `page` (None = posição fora do documento)."""
         self._annotations = tuple(annotations)
-        annot_key = tuple((a.id, a.kind, tuple(a.rects), a.text) for a in annotations)
+        annot_key = tuple(repr(a) for a in annotations) + (self.selected_id,)
         args: RenderArgs = (page, raw_page, tuple(page_hits), current_hit, zoom,
                             tuple(page_diffs), current_diff, annot_key)
         if args == self._args:
             return
         self._args = args
         self._render_now()
+
+    def invalidate(self) -> None:
+        """Força redesenhar na próxima render() (ex.: cores trocadas nas Configurações)."""
+        self._args = None
 
     def set_hit_status(self, active: bool, count: int, position: int) -> None:
         self.hit_box.setVisible(active)
@@ -273,10 +303,13 @@ class PdfPane(QFrame):
         dpr = self.devicePixelRatioF() or 1.0
         self._scale, self._dpr = scale, dpr
         image = self._page_image(page, page_no, scale * dpr)
-        if page_hits or page_diffs or self._annotations:
+        marks = list(self._annotations)
+        if self._preview is not None:
+            marks = [a for a in marks if a.id != self._preview.id] + [self._preview]
+        if page_hits or page_diffs or marks:
             image = image.copy()
-            if self._annotations:
-                self._paint_annotations(image, page, self._annotations, scale * dpr, dpr)
+            if marks:
+                self._paint_annotations(image, page, marks, scale * dpr, dpr, self.selected_id)
             if page_diffs:
                 self._paint_diffs(image, page, page_diffs, current_diff, scale * dpr, dpr)
             if page_hits:
@@ -378,26 +411,151 @@ class PdfPane(QFrame):
         painter.end()
 
     @classmethod
-    def _paint_annotations(cls, image: QImage, page: fitz.Page, annotations, scale: float, dpr: float) -> None:
+    def _paint_annotations(cls, image: QImage, page: fitz.Page, annotations, scale: float, dpr: float,
+                           selected_id: str = "") -> None:
         painter = QPainter(image)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         matrix = page.rotation_matrix
         for a in annotations:
-            if a.kind == HIGHLIGHT:
-                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Multiply)
-                for rect in a.rects:
-                    painter.fillRect(cls._qrect(rect, matrix, scale), ANNOT_FILL)
-                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
-            else:
-                q = cls._qrect(a.rects[0], matrix, scale)
-                painter.setBrush(NOTE_FILL)
-                painter.setPen(QPen(NOTE_PEN, 1.5 * dpr))
-                painter.drawRoundedRect(q, 3 * dpr, 3 * dpr)
-                painter.setPen(QPen(NOTE_PEN, 1.2 * dpr))
-                for k in (0.33, 0.5, 0.67):   # "linhas" do bilhete
-                    y = q.top() + q.height() * k
-                    painter.drawLine(QPointF(q.left() + q.width() * 0.22, y), QPointF(q.right() - q.width() * 0.22, y))
+            painter.save()
+            painter.setOpacity(a.opacity)
+            try:
+                cls._paint_one(painter, a, matrix, scale, dpr)
+            finally:
+                painter.restore()
+        for a in annotations:
+            if a.id == selected_id:
+                cls._paint_selection(painter, a, matrix, scale, dpr)
         painter.end()
+
+    @staticmethod
+    def _qpoint(point, matrix, scale: float) -> QPointF:
+        p = fitz.Point(point) * matrix
+        return QPointF(p.x * scale, p.y * scale)
+
+    @classmethod
+    def _paint_one(cls, painter: QPainter, a: Annotation, matrix, scale: float, dpr: float) -> None:
+        color = qcolor(a.stroke_color)
+        pen = QPen(color, max(a.width, 0.5) * scale, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
+                   Qt.PenJoinStyle.RoundJoin)
+        no_pen = a.width <= 0
+        brush = qcolor(a.fill) if a.fill is not None else Qt.BrushStyle.NoBrush
+        kind = a.kind
+        if kind == am.HIGHLIGHT:
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Multiply)
+            for rect in a.rects:
+                painter.fillRect(cls._qrect(rect, matrix, scale), qcolor(a.stroke_color, 150))
+        elif kind in (am.UNDERLINE, am.STRIKEOUT, am.SQUIGGLY):
+            painter.setPen(QPen(color, max(1.2 * dpr, scale * 1.0)))
+            for rect in a.rects:
+                q = cls._qrect(rect, matrix, scale)
+                if kind == am.UNDERLINE:
+                    painter.drawLine(q.bottomLeft(), q.bottomRight())
+                elif kind == am.STRIKEOUT:
+                    painter.drawLine(QPointF(q.left(), q.center().y()), QPointF(q.right(), q.center().y()))
+                else:
+                    step = max(q.height() / 5, 2.0)
+                    path = QPainterPath(QPointF(q.left(), q.bottom()))
+                    x, up = q.left(), True
+                    while x < q.right():
+                        x = min(x + step, q.right())
+                        path.lineTo(QPointF(x, q.bottom() - (step if up else 0)))
+                        up = not up
+                    painter.setBrush(Qt.BrushStyle.NoBrush)
+                    painter.drawPath(path)
+        elif kind == am.NOTE:
+            q = cls._qrect(a.rects[0], matrix, scale)
+            painter.setBrush(color)
+            painter.setPen(QPen(NOTE_PEN, 1.5 * dpr))
+            painter.drawRoundedRect(q, 3 * dpr, 3 * dpr)
+            painter.setPen(QPen(NOTE_PEN, 1.2 * dpr))
+            for k in (0.33, 0.5, 0.67):   # "linhas" do bilhete
+                y = q.top() + q.height() * k
+                painter.drawLine(QPointF(q.left() + q.width() * 0.22, y), QPointF(q.right() - q.width() * 0.22, y))
+        elif kind in (am.RECT, am.ELLIPSE):
+            q = cls._qrect(a.rects[0], matrix, scale)
+            painter.setPen(Qt.PenStyle.NoPen if no_pen else pen)
+            painter.setBrush(brush)
+            painter.drawRect(q) if kind == am.RECT else painter.drawEllipse(q)
+        elif kind in (am.LINE, am.ARROW):
+            p0, p1 = (cls._qpoint(p, matrix, scale) for p in a.points[:2])
+            painter.setPen(pen)
+            painter.drawLine(p0, p1)
+            if kind == am.ARROW:
+                cls._arrow_head(painter, p0, p1, max(a.width, 1.0) * scale, color)
+        elif kind == am.POLYGON:
+            painter.setPen(Qt.PenStyle.NoPen if no_pen else pen)
+            painter.setBrush(brush)
+            points = [cls._qpoint(p, matrix, scale) for p in a.points]
+            painter.drawPolygon(QPolygonF(points)) if len(points) > 2 else painter.drawPolyline(QPolygonF(points))
+        elif kind == am.INK:
+            painter.setPen(pen)
+            for stroke in a.strokes:
+                painter.drawPolyline(QPolygonF([cls._qpoint(p, matrix, scale) for p in stroke]))
+        elif kind in (am.TEXTBOX, am.CALLOUT):
+            q = cls._qrect(a.rects[0], matrix, scale)
+            border = QPen(color, max(a.width, 1.0 if kind == am.CALLOUT else 0.0) * scale)
+            if kind == am.CALLOUT and a.points:
+                tip = cls._qpoint(a.points[0], matrix, scale)
+                edge = QPointF(min(max(tip.x(), q.left()), q.right()), min(max(tip.y(), q.top()), q.bottom()))
+                if q.contains(tip):
+                    edge = QPointF(q.left(), q.center().y())
+                painter.setPen(border)
+                painter.drawLine(edge, tip)
+                cls._arrow_head(painter, edge, tip, max(a.width, 1.0) * scale, color, open_head=True)
+            painter.setBrush(brush)
+            painter.setPen(border if (a.width > 0 or kind == am.CALLOUT) else Qt.PenStyle.NoPen)
+            painter.drawRect(q)
+            cls._draw_text(painter, q, a.text, a.font_size * scale, color, Qt.AlignmentFlag.AlignLeft)
+        elif kind == am.STAMP:
+            q = cls._qrect(a.rects[0], matrix, scale)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(color, max(a.width, 2.0) * scale))
+            painter.drawRoundedRect(q, 4 * scale, 4 * scale)
+            size = min(a.font_size, (a.rects[0][3] - a.rects[0][1]) * 0.6) * scale
+            cls._draw_text(painter, q, a.text.upper(), size, color, Qt.AlignmentFlag.AlignCenter, bold=True)
+
+    @staticmethod
+    def _draw_text(painter: QPainter, q: QRectF, text: str, pixel_size: float, color: QColor,
+                   align: Qt.AlignmentFlag, bold: bool = False) -> None:
+        if not text or pixel_size < 1:
+            return
+        font = QFont("Helvetica")
+        font.setPixelSize(max(1, round(pixel_size)))
+        font.setBold(bold)
+        painter.setFont(font)
+        painter.setPen(color)
+        pad = pixel_size * 0.25
+        flags = int(align | Qt.AlignmentFlag.AlignVCenter if bold else align | Qt.AlignmentFlag.AlignTop)
+        painter.drawText(q.adjusted(pad, pad * 0.5, -pad, -pad * 0.5), flags | int(Qt.TextFlag.TextWordWrap), text)
+
+    @staticmethod
+    def _arrow_head(painter: QPainter, p0: QPointF, p1: QPointF, width: float, color: QColor,
+                    open_head: bool = False) -> None:
+        angle = math.atan2(p1.y() - p0.y(), p1.x() - p0.x())
+        size = max(width * 4, 8)
+        left = QPointF(p1.x() - size * math.cos(angle - 0.45), p1.y() - size * math.sin(angle - 0.45))
+        right = QPointF(p1.x() - size * math.cos(angle + 0.45), p1.y() - size * math.sin(angle + 0.45))
+        if open_head:
+            painter.drawPolyline(QPolygonF([left, p1, right]))
+        else:
+            painter.setBrush(color)
+            painter.drawPolygon(QPolygonF([left, p1, right]))
+
+    @classmethod
+    def _paint_selection(cls, painter: QPainter, a: Annotation, matrix, scale: float, dpr: float) -> None:
+        q = cls._qrect(am.selection_box(a), matrix, scale).adjusted(-3 * dpr, -3 * dpr, 3 * dpr, 3 * dpr)
+        painter.setOpacity(1.0)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(SELECTION_PEN, 1.2 * dpr, Qt.PenStyle.DashLine))
+        painter.drawRect(q)
+        if a.kind in am.RESIZABLE:
+            h = HANDLE_PX * dpr
+            painter.setBrush(QColor(255, 255, 255))
+            painter.setPen(QPen(SELECTION_PEN, 1.2 * dpr))
+            for c in (q.topLeft(), q.topRight(), q.bottomLeft(), q.bottomRight()):
+                painter.drawRect(QRectF(c.x() - h / 2, c.y() - h / 2, h, h))
 
     def annotation_tooltip(self, x: float, y: float) -> str:
         from app.services.annotations import find_at
@@ -425,37 +583,221 @@ class PdfPane(QFrame):
         point = fitz.Point(px, py) * page.derotation_matrix
         return point.x, point.y
 
+    # --- interação: marcar, desenhar, selecionar ------------------------------------
+    def _new_mark(self, kind: str, rects, **geometry) -> Annotation:
+        st = self.mark_style
+        color = st.highlight if kind == am.HIGHLIGHT else st.color
+        if kind == am.NOTE:
+            color = am.NOTE_COLOR
+        fill = st.fill if kind in am.FILLABLE else None
+        if kind in (am.TEXTBOX, am.CALLOUT) and fill is None:
+            fill = (1.0, 1.0, 1.0)
+        return Annotation(kind, self._shown_page, list(rects), color=color, fill=fill, width=st.width,
+                          opacity=st.opacity, font_size=st.font_size, **geometry)
+
+    def _handle_at(self, x: float, y: float) -> Optional[Tuple[float, float]]:
+        """Canto oposto (fixo) se (x, y) estiver sobre uma alça da marcação selecionada."""
+        sel = self.selected_annotation()
+        if sel is None or sel.kind not in am.RESIZABLE:
+            return None
+        box = am.selection_box(sel)
+        reach = (HANDLE_PX + 3) / max(self._scale, 1e-6)
+        pad = 3 / max(self._scale, 1e-6)
+        corners = {(box[0] - pad, box[1] - pad): (box[2], box[3]), (box[2] + pad, box[1] - pad): (box[0], box[3]),
+                   (box[0] - pad, box[3] + pad): (box[2], box[1]), (box[2] + pad, box[3] + pad): (box[0], box[1])}
+        for (cx, cy), fixed in corners.items():
+            if abs(x - cx) <= reach and abs(y - cy) <= reach:
+                return fixed
+        return None
+
+    def selected_annotation(self) -> Optional[Annotation]:
+        return next((a for a in self._annotations if a.id == self.selected_id), None) if self.selected_id else None
+
+    def set_selected(self, annotation_id: str) -> None:
+        if annotation_id != self.selected_id:
+            self.selected_id = annotation_id
+            self._args = None if self._args is None else self._args[:-1] + ((),)
+            self._render_now()
+
+    def _select(self, annotation_id: str) -> None:
+        self.set_selected(annotation_id)
+        self.selection_changed.emit(self.index, annotation_id)
+
+    def _show_preview(self, annotation: Optional[Annotation]) -> None:
+        self._preview = annotation
+        self._render_now()
+
     def _image_event(self, event: QEvent) -> bool:
         etype = event.type()
+        if etype == QEvent.Type.MouseButtonDblClick and event.button() == Qt.MouseButton.LeftButton:
+            if self.tool == am.POLYGON:
+                self.finish_polygon()
+                return True
+            point = self.to_page_point(event.position().toPoint())
+            if self.tool == TOOL_NONE and point is not None:
+                from app.services.annotations import find_at
+
+                found = find_at(self._annotations, self._shown_page, *point)
+                if found is not None:
+                    self.edit_requested.emit(self.index, found.id)
+                    return True
+            return False
         if etype == QEvent.Type.MouseButtonPress:
             pos = event.position().toPoint()
+            point = self.to_page_point(pos)
             if event.button() == Qt.MouseButton.RightButton:
-                point = self.to_page_point(pos)
                 if point is not None:
                     self.annotation_menu.emit(self.index, self._shown_page, point[0], point[1],
                                               event.globalPosition().toPoint())
                 return True
-            if event.button() == Qt.MouseButton.LeftButton and self.tool == TOOL_NOTE:
-                point = self.to_page_point(pos)
+            if event.button() != Qt.MouseButton.LeftButton:
+                return False
+            tool = self.tool
+            if tool == TOOL_NOTE:
                 if point is not None:
                     self.note_requested.emit(self.index, self._shown_page, point[0], point[1])
                 return True
-            if event.button() == Qt.MouseButton.LeftButton and self.tool == TOOL_HIGHLIGHT:
+            if tool == am.STAMP:
+                if point is not None:
+                    self.stamp_requested.emit(self.index, self._shown_page, point[0], point[1])
+                return True
+            if tool in am.TEXT_MARKUPS:
                 self._drag_start = pos
                 self.rubber.setGeometry(QRect(pos, QSize()))
                 self.rubber.show()
                 return True
-        elif etype == QEvent.Type.MouseMove:
+            if point is None:
+                return tool != TOOL_NONE
+            if tool == am.POLYGON:
+                self._polygon.append(point)
+                self._show_preview(self._polygon_mark(point))
+                return True
+            if tool in DRAG_TOOLS:
+                self._gesture = {"mode": "draw", "start": point, "points": [point]}
+                return True
+            if tool == TOOL_NONE:
+                return self._press_select(point)
+            return False
+        if etype == QEvent.Type.MouseMove:
             pos = event.position().toPoint()
             if self._drag_start is not None:
                 self.rubber.setGeometry(QRect(self._drag_start, pos).normalized())
                 return True
             point = self.to_page_point(pos)
+            if self._gesture is not None and point is not None:
+                self._update_gesture(point)
+                return True
+            if self.tool == am.POLYGON and self._polygon and point is not None:
+                self._show_preview(self._polygon_mark(point))
+                return True
             self.image.setToolTip(self.annotation_tooltip(*point) if point is not None else "")
-        elif etype == QEvent.Type.MouseButtonRelease and self._drag_start is not None:
-            self.finish_highlight(self._drag_start, event.position().toPoint())
-            return True
+            if self.tool == TOOL_NONE and point is not None:
+                over_handle = self._handle_at(*point) is not None
+                self.image.setCursor(Qt.CursorShape.SizeFDiagCursor if over_handle else Qt.CursorShape.ArrowCursor)
+            return False
+        if etype == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+            if self._drag_start is not None:
+                self.finish_highlight(self._drag_start, event.position().toPoint())
+                return True
+            if self._gesture is not None:
+                point = self.to_page_point(event.position().toPoint())
+                self._finish_gesture(point)
+                return True
         return False
+
+    def _press_select(self, point: Tuple[float, float]) -> bool:
+        from app.services.annotations import find_at
+
+        fixed = self._handle_at(*point)
+        sel = self.selected_annotation()
+        if fixed is not None and sel is not None:
+            self._gesture = {"mode": "resize", "fixed": fixed, "original": sel}
+            return True
+        found = find_at(self._annotations, self._shown_page, *point)
+        if found is None:
+            if self.selected_id:
+                self._select("")
+            return False
+        self._select(found.id)
+        self._gesture = {"mode": "move", "start": point, "original": found}
+        return True
+
+    def _update_gesture(self, point: Tuple[float, float]) -> None:
+        g = self._gesture
+        if g["mode"] == "move":
+            dx, dy = point[0] - g["start"][0], point[1] - g["start"][1]
+            self._show_preview(am.moved(g["original"], dx, dy))
+        elif g["mode"] == "resize":
+            fx, fy = g["fixed"]
+            self._show_preview(am.resized(g["original"], (fx, fy, point[0], point[1])))
+        else:
+            g["points"].append(point)
+            self._show_preview(self._drawn_mark(g["start"], point, g["points"], final=False))
+
+    def _finish_gesture(self, point: Optional[Tuple[float, float]]) -> None:
+        g, self._gesture = self._gesture, None
+        result = self._preview
+        self._preview = None
+        if g["mode"] in ("move", "resize"):
+            if result is not None and repr(result) != repr(g["original"]):
+                self.annotation_changed.emit(self.index, result)
+            else:
+                self._render_now()
+            return
+        end = point or g["points"][-1]
+        mark = self._drawn_mark(g["start"], end, g["points"] + [end], final=True)
+        self._render_now()
+        if mark is not None:
+            self.shape_drawn.emit(self.index, mark)
+
+    def _drawn_mark(self, start, end, points, final: bool) -> Optional[Annotation]:
+        tool = self.tool
+        x0, y0 = start
+        x1, y1 = end
+        small = abs(x1 - x0) < am.MIN_SIZE and abs(y1 - y0) < am.MIN_SIZE
+        if tool in (am.RECT, am.ELLIPSE, am.TEXTBOX):
+            if small:
+                if not final or tool != am.TEXTBOX:
+                    return None
+                x1, y1 = x0 + TEXTBOX_SIZE[0], y0 + TEXTBOX_SIZE[1]
+            return self._new_mark(tool, [(min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))])
+        if tool in (am.LINE, am.ARROW):
+            return None if small else self._new_mark(tool, [], points=[start, end])
+        if tool == am.CALLOUT:
+            w, h = CALLOUT_SIZE
+            if small:   # clique: balão acima e à direita do ponto
+                x1, y1 = x0 + 30, y0 - 30 - h
+            return self._new_mark(tool, [(x1, y1, x1 + w, y1 + h)], points=[start])
+        if tool == am.INK:
+            pts = [p for i, p in enumerate(points) if i == 0 or p != points[i - 1]]
+            return None if len(pts) < 2 else self._new_mark(tool, [], strokes=[pts])
+        return None
+
+    def _polygon_mark(self, cursor: Tuple[float, float]) -> Optional[Annotation]:
+        pts = self._polygon + [cursor]
+        if len(pts) < 2:
+            return None
+        return self._new_mark(am.POLYGON, [], points=pts)
+
+    def finish_polygon(self) -> None:
+        pts = [p for i, p in enumerate(self._polygon) if i == 0 or p != self._polygon[i - 1]]
+        self._polygon = []
+        self._preview = None
+        self._render_now()
+        if len(pts) >= 3:
+            self.shape_drawn.emit(self.index, self._new_mark(am.POLYGON, [], points=pts))
+
+    def cancel_drawing(self) -> bool:
+        """Esc: cancela o polígono ou o arraste em andamento."""
+        busy = bool(self._polygon) or self._gesture is not None or self._drag_start is not None
+        self._polygon = []
+        self._gesture = None
+        self._drag_start = None
+        self.rubber.hide()
+        if self._preview is not None:
+            self._preview = None
+            self._render_now()
+        return busy
 
     def finish_highlight(self, start: QPoint, end: QPoint) -> None:
         self._drag_start = None
@@ -465,14 +807,19 @@ class PdfPane(QFrame):
         if a is None or b is None or self._shown_page is None:
             return
         rect = (min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
-        self.highlight_requested.emit(self.index, self._shown_page, rect)
+        kind = self.tool if self.tool in am.TEXT_MARKUPS else am.HIGHLIGHT
+        if kind == am.HIGHLIGHT:
+            self.highlight_requested.emit(self.index, self._shown_page, rect)
+        else:
+            self.markup_requested.emit(self.index, self._shown_page, kind, rect)
 
     def set_tool(self, tool: str) -> None:
+        self.cancel_drawing()
         self.tool = tool
         cursor = Qt.CursorShape.ArrowCursor
-        if tool == TOOL_HIGHLIGHT:
+        if tool in am.TEXT_MARKUPS:
             cursor = Qt.CursorShape.IBeamCursor
-        elif tool == TOOL_NOTE:
+        elif tool != TOOL_NONE:
             cursor = Qt.CursorShape.CrossCursor
         self.image.setCursor(cursor)
 

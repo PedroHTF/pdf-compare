@@ -6,7 +6,8 @@ from __future__ import annotations
 from app.i18n import LANGUAGES, language, tr
 
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Sequence
+from dataclasses import dataclass
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from PySide6.QtCore import QByteArray, QMimeData, QPoint, QSettings, QSize, QStandardPaths, Qt
 from PySide6.QtGui import QAction, QKeySequence
@@ -32,11 +33,13 @@ from PySide6.QtWidgets import (
 
 from app import __copyright__, __url__, __version__
 from app.model.session import DocumentSession, PasswordRequired, PdfOpenError, WrongPassword
+from app.services import annotations as am
 from app.services import ocr
 from app.services.annotations import (
     HIGHLIGHT,
     NOTE,
     NOTE_SIZE,
+    STAMP_FONT,
     Annotation,
     AnnotationStore,
     file_fingerprint,
@@ -44,8 +47,10 @@ from app.services.annotations import (
     for_page,
     note_rect,
     save_annotated_pdf,
+    stamp_rect,
     words_in_rect,
 )
+from app.services.preferences import MarkStyle, Preferences, to_hex
 from app.services.export import Column, ExportError, export_comparison, export_current_pages, safe_stem
 from app.services.indexer import IndexScheduler
 from app.services.navigation import NavigationController
@@ -63,7 +68,18 @@ from app.services.workspace import (
     save_session,
 )
 from app.ui.export_dialog import ANNOTATED, CURRENT_PAGES, SCOPE_ALL, SIDE_BY_SIDE, ExportChoice, ExportDialog
-from app.ui.pane import FIT_PAGE, FIT_WIDTH, TOOL_HIGHLIGHT, TOOL_NONE, TOOL_NOTE, PdfPane, ZoomMode
+from app.ui.mark_widgets import MarkStyleBar, kind_label, stamp_label
+from app.ui.marks_panel import MarksPanel
+from app.ui.pane import (
+    FIT_PAGE,
+    FIT_WIDTH,
+    TOOL_HIGHLIGHT,
+    TOOL_NONE,
+    TOOL_NOTE,
+    PdfPane,
+    ZoomMode,
+    set_diff_colors,
+)
 from app.ui.resources import app_icon, logo_pixmap
 from app.ui.results_panel import MAX_ITEMS_PER_DOC, ResultsPanel
 from app.ui.search_bar import SearchBar
@@ -82,6 +98,38 @@ def _plural(n: int, singular: str, plural: str) -> str:
     return tr(singular if n == 1 else plural, n=n)
 
 
+@dataclass
+class UndoStep:
+    """Estado das marcações de um documento antes e depois de uma alteração."""
+
+    key: str
+    name: str
+    before: List[Annotation]
+    after: List[Annotation]
+
+
+# Ferramentas de marcação na ordem da barra: (tipo, texto do botão, dica)
+MARK_KINDS = [am.HIGHLIGHT, am.UNDERLINE, am.STRIKEOUT, am.SQUIGGLY, am.NOTE, am.RECT, am.ELLIPSE, am.LINE, am.ARROW, am.POLYGON, am.INK, am.TEXTBOX, am.CALLOUT]
+
+
+def mark_tools() -> List[Tuple[str, str, str]]:
+    return [
+        (am.HIGHLIGHT, "▌", tr("Destacar texto: arraste sobre o texto")),
+        (am.UNDERLINE, "U̲", tr("Sublinhar texto: arraste sobre o texto")),
+        (am.STRIKEOUT, "S̶", tr("Tachar texto: arraste sobre o texto")),
+        (am.SQUIGGLY, "〰", tr("Sublinhado ondulado: arraste sobre o texto")),
+        (am.NOTE, "🗈", tr("Nota: clique no ponto da página")),
+        (am.RECT, "▭", tr("Retângulo: arraste na página")),
+        (am.ELLIPSE, "◯", tr("Elipse: arraste na página")),
+        (am.LINE, "╱", tr("Linha: arraste na página")),
+        (am.ARROW, "➚", tr("Seta: arraste do início até a ponta")),
+        (am.POLYGON, "⬠", tr("Polígono: clique em cada vértice e dê duplo clique para terminar (Esc cancela)")),
+        (am.INK, "✎", tr("Caneta: desenhe à mão livre")),
+        (am.TEXTBOX, "T", tr("Caixa de texto: arraste para definir a área (ou clique)")),
+        (am.CALLOUT, "💬", tr("Balão: arraste do ponto indicado até onde fica o texto")),
+    ]
+
+
 def default_data_dir() -> Path:
     location = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
     return Path(location) if location else Path.home() / ".pdfcompare"
@@ -95,6 +143,16 @@ class MainWindow(QMainWindow):
         self.annotations = AnnotationStore(self.data_dir / "anotacoes")
         self._annot_keys: Dict[int, Optional[str]] = {}
         self.tool = TOOL_NONE
+        self.prefs = Preferences(self.settings)
+        set_diff_colors(self.prefs.diff_colors())
+        self.mark_style: MarkStyle = self.prefs.mark_style()
+        self.stamp = stamp_label(am.STAMPS[0])
+        self._undo: List[UndoStep] = []
+        self._redo: List[UndoStep] = []
+        self._selection: Optional[Tuple[int, str]] = None   # (painel, id da marcação)
+        self._clipboard: Optional[Annotation] = None
+        self._clipboard_source: Optional[Tuple[int, int]] = None   # (painel, página) de onde foi copiada
+        self._last_pane = 0
         self.sessions: List[DocumentSession] = []
         self.panes: List[PdfPane] = []
         self.nav = NavigationController()
@@ -118,6 +176,7 @@ class MainWindow(QMainWindow):
         self._create_toolbars()
         self._create_central()
         self._create_results_dock()
+        self._create_marks_dock()
         self._create_status_bar()
         self._sync_zoom_combo()
         self._restore_ocr()
@@ -197,6 +256,39 @@ class MainWindow(QMainWindow):
                                      tr("Clique na página para adicionar uma nota"), checkable=True)
         self.act_highlight.setIconText(tr("Destacar"))
         self.act_note.setIconText(tr("Nota"))
+        self.act_select = self._action(tr("&Selecionar e mover"), lambda: self.set_tool(TOOL_NONE), [],
+                                       tr("Selecionar, mover e redimensionar marcações (duplo clique edita o texto)"),
+                                       checkable=True)
+        self.act_select.setIconText("⬚")
+        self.act_select.setChecked(True)
+        self.tool_actions: Dict[str, QAction] = {TOOL_NONE: self.act_select, TOOL_HIGHLIGHT: self.act_highlight,
+                                                 TOOL_NOTE: self.act_note}
+        for kind, glyph, tip in mark_tools():
+            if kind not in self.tool_actions:
+                self.tool_actions[kind] = self._action(kind_label(kind), lambda k=kind: self.toggle_tool(k), [],
+                                                       tip, checkable=True)
+            self.tool_actions[kind].setIconText(glyph)
+            self.tool_actions[kind].setToolTip(f"{kind_label(kind)} — {tip}")
+        self.act_stamp = self._action(tr("Carimbo"), lambda: self.toggle_tool(am.STAMP), [],
+                                      tr("Carimbo: escolha o texto e clique na página"), checkable=True)
+        self.act_stamp.setIconText("▣")
+        self.tool_actions[am.STAMP] = self.act_stamp
+
+        self.act_undo = self._action(tr("&Desfazer"), self.undo, ["Ctrl+Z"], tr("Desfazer a última alteração nas marcações"))
+        self.act_redo = self._action(tr("&Refazer"), self.redo, ["Ctrl+Y", "Ctrl+Shift+Z"],
+                                     tr("Refazer a alteração desfeita"))
+        self.act_undo.setIconText("↶")
+        self.act_redo.setIconText("↷")
+        self.act_copy_mark = self._action(tr("&Copiar marcação"), self.copy_selected, ["Ctrl+C"])
+        self.act_paste_mark = self._action(tr("Co&lar marcação"), self.paste_mark, ["Ctrl+V"],
+                                           tr("Colar a marcação copiada na página à vista do painel"))
+        self.act_delete_mark = self._action(tr("&Excluir marcação"), self.delete_selected, ["Delete"])
+        self.act_escape = self._action(tr("Cancelar"), self.escape, ["Esc"])
+        for action in (self.act_copy_mark, self.act_paste_mark, self.act_delete_mark, self.act_escape):
+            action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            self.removeAction(action)
+        self.act_settings = self._action(tr("&Configurações…"), self.open_settings, ["Ctrl+,"],
+                                         tr("Idiomas, cores da comparação e estilo das marcações"))
 
         self.act_ocr = self._action(tr("Reconhecer texto em PDFs escaneados (&OCR)"), self.toggle_ocr, [],
                                     tr("Usa o Tesseract OCR, se instalado, para pesquisar e comparar PDFs escaneados"),
@@ -236,6 +328,13 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         m.addAction(self.act_quit)
 
+        m = bar.addMenu(tr("E&ditar"))
+        m.addActions([self.act_undo, self.act_redo])
+        m.addSeparator()
+        m.addActions([self.act_copy_mark, self.act_paste_mark, self.act_delete_mark])
+        m.addSeparator()
+        m.addAction(self.act_settings)
+
         m = bar.addMenu(tr("&Navegar"))
         m.addActions([self.act_prev, self.act_next, self.act_first, self.act_last])
         m.addSeparator()
@@ -252,11 +351,17 @@ class MainWindow(QMainWindow):
         self.view_menu = m
 
         m = bar.addMenu(tr("&Ferramentas"))
-        m.addActions([self.act_highlight, self.act_note])
+        marks = m.addMenu(tr("&Marcações"))
+        marks.addAction(self.act_select)
+        marks.addSeparator()
+        marks.addActions([self.tool_actions[k] for k in MARK_KINDS])
+        marks.addAction(self.act_stamp)
         m.addSeparator()
         m.addAction(self.act_diff)
         m.addSeparator()
         m.addActions([self.act_ocr, self.act_ocr_language])
+        m.addSeparator()
+        m.addAction(self.act_settings)
 
         self.language_menu = m.addMenu("Idioma / &Language")
         for code, label in LANGUAGES.items():
@@ -299,7 +404,7 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
         tb.addAction(self.act_linked_scroll)
         tb.addSeparator()
-        tb.addActions([self.act_highlight, self.act_note, self.act_diff])
+        tb.addAction(self.act_diff)
         tb.addSeparator()
         tb.addAction(self.act_export)
 
@@ -318,6 +423,43 @@ class MainWindow(QMainWindow):
         self.search_bar.prev_requested.connect(lambda: self.next_hit_all(-1))
         stb.addWidget(self.search_bar)
         self.addToolBar(stb)
+        self._create_mark_toolbar()
+
+    def _create_mark_toolbar(self) -> None:
+        from PySide6.QtWidgets import QToolButton
+
+        self.addToolBarBreak()
+        mtb = QToolBar(tr("Barra de marcação"))
+        mtb.setObjectName("markToolbar")
+        mtb.setMovable(False)
+        mtb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        mtb.addAction(self.act_select)
+        mtb.addSeparator()
+        for kind in MARK_KINDS:
+            mtb.addAction(self.tool_actions[kind])
+        self.stamp_menu = QMenu(self)
+        for stamp in am.STAMPS:
+            label = stamp_label(stamp)
+            self.stamp_menu.addAction(label, lambda t=label: self.choose_stamp(t))
+        self.stamp_menu.addSeparator()
+        self.stamp_menu.addAction(tr("Outro texto…"), self.choose_custom_stamp)
+        stamp_button = QToolButton()
+        stamp_button.setDefaultAction(self.act_stamp)
+        stamp_button.setMenu(self.stamp_menu)
+        stamp_button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        stamp_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        mtb.addWidget(stamp_button)
+        mtb.addSeparator()
+        self.style_bar = MarkStyleBar(self.mark_style)
+        self.style_bar.style_changed.connect(self.set_mark_style)
+        mtb.addWidget(self.style_bar)
+        mtb.addSeparator()
+        mtb.addActions([self.act_undo, self.act_redo])
+        self.addToolBar(mtb)
+        self.mark_toolbar = mtb
+        self.act_mark_toolbar = mtb.toggleViewAction()
+        self.act_mark_toolbar.setText(tr("Barra de &marcação"))
+        mtb.setVisible(self._bool_setting("view/mark_toolbar", True))
 
     def _create_central(self) -> None:
         self.empty_view = DropZone(
@@ -333,6 +475,8 @@ class MainWindow(QMainWindow):
         empty_layout.addWidget(self.empty_view)
 
         self.grid_host = QWidget()
+        for action in (self.act_copy_mark, self.act_paste_mark, self.act_delete_mark, self.act_escape):
+            self.grid_host.addAction(action)
         self.grid = QGridLayout(self.grid_host)
         self.grid.setContentsMargins(6, 6, 6, 6)
         self.grid.setSpacing(6)
@@ -359,6 +503,24 @@ class MainWindow(QMainWindow):
         self.view_menu.addSeparator()
         self.view_menu.addAction(self.act_results)
         self.search_bar.layout().insertWidget(5, self._results_button())
+
+    def _create_marks_dock(self) -> None:
+        self.marks_panel = MarksPanel()
+        self.marks_panel.mark_activated.connect(self.go_to_mark)
+        self.marks_dock = QDockWidget(tr("Marcações"), self)
+        self.marks_dock.setObjectName("marksDock")
+        self.marks_dock.setWidget(self.marks_panel)
+        self.marks_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.marks_dock)
+        self.marks_dock.setVisible(self._bool_setting("view/marks_panel", False))
+        self.act_marks_panel = self.marks_dock.toggleViewAction()
+        self.act_marks_panel.setText(tr("Lista de &marcações"))
+        self.act_marks_panel.setShortcut(QKeySequence("Ctrl+Shift+M"))
+        self.act_marks_panel.setToolTip(tr("Mostrar a lista de todas as marcações (Ctrl+Shift+M)"))
+        self.addAction(self.act_marks_panel)
+        self.view_menu.addAction(self.act_marks_panel)
+        self.view_menu.addAction(self.act_mark_toolbar)
+        self.mark_toolbar.addAction(self.act_marks_panel)
 
     def _results_button(self):
         from PySide6.QtWidgets import QToolButton
@@ -534,6 +696,14 @@ class MainWindow(QMainWindow):
             pane.highlight_requested.connect(self._on_highlight)
             pane.note_requested.connect(self._on_note)
             pane.annotation_menu.connect(self._on_annotation_menu)
+            pane.markup_requested.connect(self._on_markup)
+            pane.shape_drawn.connect(self._on_shape)
+            pane.stamp_requested.connect(self._on_stamp)
+            pane.annotation_changed.connect(self._on_mark_changed)
+            pane.selection_changed.connect(self._on_selection)
+            pane.edit_requested.connect(self.edit_annotation)
+            pane.mark_style = self.mark_style
+            pane.scroll.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
             pane.set_tool(self.tool)
             self.panes.append(pane)
             self.grid.addWidget(pane, i // cols, i % cols)
@@ -545,7 +715,9 @@ class MainWindow(QMainWindow):
             self.grid.setColumnStretch(c, 1)
         for r in range(rows):
             self.grid.setRowStretch(r, 1)
+        self._selection = None
         self.refresh()
+        self._refresh_marks_panel()
 
     # ======================================================================
     # Navegação
@@ -592,6 +764,11 @@ class MainWindow(QMainWindow):
 
     def refresh(self) -> None:
         active = bool(self._query)
+        selected = self.selected_annotation()
+        if self._selection is not None and (selected is None or self.nav.page_for(self._selection[0]) != selected.page):
+            self._selection = None   # a marcação selecionada saiu de vista
+            for pane in self.panes:
+                pane.selected_id = ""
         for i, pane in enumerate(self.panes):
             page = self.nav.page_for(i)
             current = self.nav.current_hit(i)
@@ -746,8 +923,13 @@ class MainWindow(QMainWindow):
 
         for action in (self.act_close_all, self.act_fit_width, self.act_fit_page,
                        self.act_zoom_in, self.act_zoom_out, self.act_find, self.act_export,
-                       self.act_save_session, self.act_highlight, self.act_note):
+                       self.act_save_session, *self.tool_actions.values()):
             action.setEnabled(has)
+        self.act_undo.setEnabled(bool(self._undo))
+        self.act_redo.setEnabled(bool(self._redo))
+        self.act_copy_mark.setEnabled(self._selection is not None)
+        self.act_delete_mark.setEnabled(self._selection is not None)
+        self.act_paste_mark.setEnabled(has and self._clipboard is not None)
         self.act_diff.setEnabled(n >= 2)
         has_diffs = n >= 2 and self.act_diff.isChecked() and self.nav.total_diffs > 0
         self.act_diff_next.setEnabled(has_diffs)
@@ -808,16 +990,25 @@ class MainWindow(QMainWindow):
             ("Ctrl+H", tr("Destacar texto (arraste sobre o texto)")),
             ("Ctrl+M", tr("Adicionar nota (clique na página)")),
             (tr("Botão direito"), tr("Editar ou remover a anotação sob o cursor")),
+            (tr("Duplo clique"), tr("Editar o texto da marcação")),
+            ("Ctrl+Z / Ctrl+Y", tr("Desfazer / refazer alterações nas marcações")),
+            ("Ctrl+C / Ctrl+V / Delete", tr("Copiar, colar ou excluir a marcação selecionada")),
+            ("Esc", tr("Cancelar o desenho, desmarcar ou voltar à seleção")),
+            ("Ctrl+Shift+M", tr("Mostrar/ocultar a lista de marcações")),
+            ("Ctrl+,", tr("Configurações")),
             (tr("Ctrl + roda do mouse"), "Zoom"),
             ("Ctrl++ / Ctrl+-", tr("Aumentar / diminuir zoom")),
             ("Ctrl+0 / Ctrl+9", tr("Ajustar à largura / página inteira")),
         ]
         table = "".join(f"<tr><td style='padding:2px 16px 2px 0'><b>{k}</b></td><td>{v}</td></tr>" for k, v in rows)
+        colors = {k: to_hex(c) for k, c in self.prefs.diff_colors().items()}
         extra = (tr("<p>Em cada painel: <b>◀ ▶</b> mudam só aquele PDF, <b>▲ ▼</b> navegam pelas "
-                 "ocorrências dele e o campo de página permite digitar o número.</p>"
-                 "<p>Comparar texto: <span style='background:#cdeccd'>verde</span> = incluído, "
-                 "<span style='background:#f6c9c4'>vermelho</span> = removido, "
-                 "<span style='background:#cfdffb'>azul</span> = alterado.</p>"))
+                    "ocorrências dele e o campo de página permite digitar o número.</p>")
+                 + tr("<p>Comparar texto: <span style='color:{added}'>■</span> incluído, "
+                      "<span style='color:{removed}'>■</span> removido, "
+                      "<span style='color:{changed}'>■</span> alterado "
+                      "(cores em Ferramentas › Configurações).</p>",
+                      added=colors[ADDED], removed=colors[REMOVED], changed=colors[CHANGED]))
         QMessageBox.information(self, tr("Atalhos de teclado"), f"<table>{table}</table>{extra}")
 
     def show_about(self) -> None:
@@ -1013,14 +1204,59 @@ class MainWindow(QMainWindow):
 
     def set_tool(self, tool: str) -> None:
         self.tool = tool
-        self.act_highlight.setChecked(tool == TOOL_HIGHLIGHT)
-        self.act_note.setChecked(tool == TOOL_NOTE)
+        for kind, action in self.tool_actions.items():
+            action.setChecked(kind == tool)
         for pane in self.panes:
             pane.set_tool(tool)
         if tool == TOOL_HIGHLIGHT:
             self.statusBar().showMessage(tr("Destacar: arraste sobre o texto. Ctrl+H de novo para sair."), 5000)
         elif tool == TOOL_NOTE:
             self.statusBar().showMessage(tr("Nota: clique no ponto da página. Ctrl+M de novo para sair."), 5000)
+        elif tool == am.STAMP:
+            self.statusBar().showMessage(tr("Carimbo “{stamp}”: clique na página. Esc para sair.", stamp=self.stamp), 5000)
+        elif tool != TOOL_NONE:
+            tip = next((t for k, _, t in mark_tools() if k == tool), "")
+            self.statusBar().showMessage(tip + "  ·  " + tr("Esc para sair."), 5000)
+
+    def choose_stamp(self, text: str) -> None:
+        self.stamp = text
+        self.set_tool(am.STAMP)
+
+    def choose_custom_stamp(self) -> None:
+        text, ok = QInputDialog.getText(self, tr("Carimbo"), tr("Texto do carimbo:"), QLineEdit.EchoMode.Normal,
+                                        self.stamp)
+        if ok and text.strip():
+            self.choose_stamp(text.strip()[:40])
+
+    def set_mark_style(self, style: MarkStyle) -> None:
+        """Estilo das próximas marcações; também é aplicado à marcação selecionada."""
+        self.mark_style = style
+        self.prefs.set_mark_style(style)
+        for pane in self.panes:
+            pane.mark_style = style
+        selected = self.selected_annotation()
+        if selected is not None:
+            self._replace_mark(self._selection[0], self._styled_copy(selected, style))
+
+    def _styled_copy(self, a: Annotation, style: MarkStyle) -> Annotation:
+        out = a.copy()
+        if a.kind == HIGHLIGHT:
+            out.color = style.highlight
+        elif a.kind != NOTE:
+            out.color = style.color
+        if a.kind in am.FILLABLE:
+            out.fill = style.fill if style.fill is not None or a.kind not in (am.TEXTBOX, am.CALLOUT) else a.fill
+        out.width = style.width
+        out.opacity = style.opacity
+        if a.kind in am.TEXT_KINDS:
+            out.font_size = style.font_size
+        return out
+
+    def _new_mark(self, kind: str, page: int, rects, **extra) -> Annotation:
+        st = self.mark_style
+        color = st.highlight if kind == HIGHLIGHT else (None if kind == NOTE else st.color)
+        return Annotation(kind, page, list(rects), color=color, width=st.width, opacity=st.opacity,
+                          font_size=st.font_size, **extra)
 
     def annotation_key(self, index: int) -> Optional[str]:
         session = self.sessions[index]
@@ -1038,67 +1274,258 @@ class MainWindow(QMainWindow):
     def page_annotations(self, index: int, page: Optional[int]) -> List[Annotation]:
         return for_page(self.document_annotations(index), page) if page is not None else []
 
-    def add_annotation(self, index: int, annotation: Annotation) -> bool:
+    def find_annotation(self, index: int, annotation_id: str) -> Optional[Annotation]:
+        return next((a for a in self.document_annotations(index) if a.id == annotation_id), None)
+
+    def selected_annotation(self) -> Optional[Annotation]:
+        if self._selection is None or self._selection[0] >= len(self.sessions):
+            return None
+        return self.find_annotation(*self._selection)
+
+    # --- alterações com desfazer -------------------------------------------------------
+    def _mutate(self, index: int, change: Callable[[str, str], object]) -> bool:
+        """Executa `change(key, nome)` guardando o estado anterior para desfazer."""
         key = self.annotation_key(index)
         if key is None:
             self._notify("warning", tr("Anotação não salva"), tr("Não foi possível ler o arquivo para guardar a anotação."))
             return False
+        name = self.sessions[index].name
+        before = self.annotations.snapshot(key)
         try:
-            self.annotations.add(key, annotation, self.sessions[index].name)
+            change(key, name)
         except OSError as exc:
+            self.annotations.restore(key, before, name)
             self._notify("warning", tr("Anotação não salva"), tr("Não foi possível gravar a anotação: {error}", error=exc))
             return False
-        self.refresh()
+        self._undo.append(UndoStep(key, name, before, self.annotations.snapshot(key)))
+        del self._undo[:-200]
+        self._redo.clear()
+        self._after_marks_changed()
         return True
 
+    def _after_marks_changed(self) -> None:
+        if self._selection is not None and self.selected_annotation() is None:
+            self._select(None)
+        self.refresh()
+        self._refresh_marks_panel()
+
+    def _restore(self, step: UndoStep, items: List[Annotation]) -> None:
+        try:
+            self.annotations.restore(step.key, items, step.name)
+        except OSError as exc:
+            self._notify("warning", tr("Anotação não salva"), tr("Não foi possível gravar a anotação: {error}", error=exc))
+        self._after_marks_changed()
+
+    def undo(self) -> None:
+        if self._undo:
+            step = self._undo.pop()
+            self._redo.append(step)
+            self._restore(step, step.before)
+
+    def redo(self) -> None:
+        if self._redo:
+            step = self._redo.pop()
+            self._undo.append(step)
+            self._restore(step, step.after)
+
+    def add_annotation(self, index: int, annotation: Annotation) -> bool:
+        return self._mutate(index, lambda key, name: self.annotations.add(key, annotation, name))
+
+    def _replace_mark(self, index: int, annotation: Annotation) -> bool:
+        return self._mutate(index, lambda key, name: self.annotations.update(key, annotation, name))
+
+    # --- criação --------------------------------------------------------------------
     def _on_highlight(self, index: int, page: int, rect: tuple) -> None:
+        self._on_markup(index, page, HIGHLIGHT, rect)
+
+    def _on_markup(self, index: int, page: int, kind: str, rect: tuple) -> None:
         session = self.sessions[index]
         rects = words_in_rect(session.doc[page], rect)
         if not rects:
             if abs(rect[2] - rect[0]) < 4 or abs(rect[3] - rect[1]) < 4:
                 self.statusBar().showMessage(tr("Arraste sobre o texto que deseja destacar."), 4000)
                 return
-            rects = [rect]   # área sem texto (imagem, PDF escaneado): destaca a área
-        self.add_annotation(index, Annotation(HIGHLIGHT, page, rects))
+            rects = [rect]   # área sem texto (imagem, PDF escaneado): marca a área
+        self._last_pane = index
+        self.add_annotation(index, self._new_mark(kind, page, rects))
 
     def _on_note(self, index: int, page: int, x: float, y: float) -> None:
         text = self._ask_note_text("")
         if text is None:
             return
         half = NOTE_SIZE / 2
+        self._last_pane = index
         self.add_annotation(index, Annotation(NOTE, page, [note_rect(x - half, y - half)], text))
+
+    def _on_shape(self, index: int, annotation: Annotation) -> None:
+        if annotation.kind in (am.TEXTBOX, am.CALLOUT):
+            text = self._ask_mark_text(kind_label(annotation.kind), "")
+            if not text:
+                return
+            annotation.text = text
+        self._last_pane = index
+        if self.add_annotation(index, annotation):
+            self._select((index, annotation.id))
+
+    def _on_stamp(self, index: int, page: int, x: float, y: float) -> None:
+        size = max(self.mark_style.font_size, STAMP_FONT)
+        mark = self._new_mark(am.STAMP, page, [stamp_rect(x, y, self.stamp, size)], text=self.stamp)
+        mark.font_size = size
+        self._last_pane = index
+        self.add_annotation(index, mark)
 
     def _ask_note_text(self, initial: str) -> Optional[str]:
         text, ok = QInputDialog.getMultiLineText(self, tr("Nota"), tr("Texto da nota:"), initial)
         return text if ok else None
 
+    def _ask_mark_text(self, title: str, initial: str) -> Optional[str]:
+        text, ok = QInputDialog.getMultiLineText(self, title, tr("Texto:"), initial)
+        return text if ok else None
+
+    # --- seleção, edição, área de transferência -------------------------------------------
+    def _select(self, selection: Optional[Tuple[int, str]]) -> None:
+        self._selection = selection
+        for pane in self.panes:
+            pane.set_selected(selection[1] if selection is not None and selection[0] == pane.index else "")
+        if selection is not None:
+            self._last_pane = selection[0]
+        self._update_ui_state()
+
+    def _on_selection(self, index: int, annotation_id: str) -> None:
+        self._last_pane = index
+        self._select((index, annotation_id) if annotation_id else None)
+
+    def _on_mark_changed(self, index: int, annotation: Annotation) -> None:
+        self._replace_mark(index, annotation)
+
+    def copy_selected(self) -> None:
+        selected = self.selected_annotation()
+        if selected is not None:
+            self._clipboard = selected.copy()
+            self._clipboard_source = (self._selection[0], selected.page)
+            self.statusBar().showMessage(tr("Marcação copiada. Ctrl+V cola na página à vista."), 3000)
+            self._update_ui_state()
+
+    def paste_mark(self, index: Optional[int] = None) -> None:
+        if self._clipboard is None or not self.sessions:
+            return
+        index = self._last_pane if index is None else index
+        index = min(max(index, 0), len(self.sessions) - 1)
+        page = self.nav.page_for(index)
+        if page is None:
+            self.statusBar().showMessage(tr("Este painel não tem página nesta posição."), 4000)
+            return
+        mark = self._clipboard.copy(new_id=True)
+        mark.page = page
+        if self._clipboard_source == (index, page):
+            mark = am.moved(mark, 12, 12)
+            self._clipboard = am.moved(self._clipboard, 12, 12)
+        if self.add_annotation(index, mark):
+            self._select((index, mark.id))
+
+    def delete_selected(self) -> None:
+        if self._selection is not None:
+            index, annotation_id = self._selection
+            self.remove_annotation(index, annotation_id)
+
+    def escape(self) -> None:
+        if any([pane.cancel_drawing() for pane in self.panes]):
+            return
+        if self._selection is not None:
+            self._select(None)
+        elif self.tool != TOOL_NONE:
+            self.set_tool(TOOL_NONE)
+
     def _on_annotation_menu(self, index: int, page: int, x: float, y: float, global_pos: QPoint) -> None:
         found = find_at(self.document_annotations(index), page, x, y)
         if found is None:
             return
+        self._select((index, found.id))
         menu = QMenu(self)
-        edit = menu.addAction(tr("Editar texto da nota…") if found.kind == NOTE else tr("Adicionar comentário…"))
+        if found.kind == NOTE:
+            edit = menu.addAction(tr("Editar texto da nota…"))
+        elif found.kind in am.TEXT_KINDS:
+            edit = menu.addAction(tr("Editar texto…"))
+        else:
+            edit = menu.addAction(tr("Adicionar comentário…"))
+        restyle = menu.addAction(tr("Aplicar o estilo atual"))
+        copy_action = menu.addAction(tr("Copiar"))
+        menu.addSeparator()
         remove = menu.addAction(tr("Remover anotação"))
         chosen = menu.exec(global_pos)
         if chosen is edit:
             self.edit_annotation(index, found.id)
+        elif chosen is restyle:
+            self._replace_mark(index, self._styled_copy(found, self.mark_style))
+        elif chosen is copy_action:
+            self.copy_selected()
         elif chosen is remove:
             self.remove_annotation(index, found.id)
 
     def edit_annotation(self, index: int, annotation_id: str) -> None:
-        key = self.annotation_key(index)
-        current = next((a for a in self.document_annotations(index) if a.id == annotation_id), None)
-        if key is None or current is None:
+        current = self.find_annotation(index, annotation_id)
+        if self.annotation_key(index) is None or current is None:
             return
-        text = self._ask_note_text(current.text)
-        if text is not None:
-            self.annotations.update_text(key, annotation_id, text, self.sessions[index].name)
-            self.refresh()
+        if current.kind in am.TEXT_KINDS:
+            text = self._ask_mark_text(kind_label(current.kind), current.text)
+            if current.kind == am.STAMP and text:
+                text = " ".join(text.split())[:40]
+        else:
+            text = self._ask_note_text(current.text)
+        if text is None or (current.kind in am.TEXT_KINDS and not text.strip()) or text == current.text:
+            return
+        edited = current.copy()
+        edited.text = text
+        if current.kind == am.STAMP:   # o carimbo acompanha o tamanho do texto
+            b = current.rects[0]
+            edited.rects = [stamp_rect((b[0] + b[2]) / 2, (b[1] + b[3]) / 2, text, current.font_size)]
+        self._replace_mark(index, edited)
 
     def remove_annotation(self, index: int, annotation_id: str) -> None:
-        key = self.annotation_key(index)
-        if key and self.annotations.remove(key, annotation_id, self.sessions[index].name):
+        if self.find_annotation(index, annotation_id) is not None:
+            self._mutate(index, lambda key, name: self.annotations.remove(key, annotation_id, name))
+
+    # --- lista de marcações ----------------------------------------------------------------
+    def _refresh_marks_panel(self) -> None:
+        self.marks_panel.set_documents([(s.name, list(self.document_annotations(i)))
+                                        for i, s in enumerate(self.sessions)])
+
+    def go_to_mark(self, index: int, annotation_id: str) -> None:
+        mark = self.find_annotation(index, annotation_id)
+        if mark is None:
+            return
+        if self.nav.page_for(index) != mark.page:
+            self.nav.show_page(index, mark.page)
             self.refresh()
+        self._select((index, annotation_id))
+
+    # --- Configurações -------------------------------------------------------------------
+    def open_settings(self) -> None:
+        from app.ui.settings_dialog import SettingsDialog, SettingsValues
+
+        tessdata = ocr.find_tessdata()
+        langs = ", ".join(ocr.installed_languages(tessdata)) or tr("nenhum (Tesseract não encontrado)")
+        values = SettingsValues(str(self.settings.value("app/language", language())), self.ocr_language(),
+                                self.prefs.diff_colors(), self.mark_style)
+        dialog = SettingsDialog(values, tr("Idiomas instalados: {langs}. Use + para combinar (ex.: eng+por).",
+                                           langs=langs), self)
+        if dialog.exec():
+            self.apply_settings(dialog.values())
+
+    def apply_settings(self, values) -> None:
+        if values.ocr_language != self.ocr_language():
+            self.set_ocr_language(values.ocr_language)
+        self.prefs.set_diff_colors(values.diff_colors)
+        set_diff_colors(values.diff_colors)
+        self.mark_style = values.mark_style
+        self.prefs.set_mark_style(values.mark_style)
+        self.style_bar.set_style(values.mark_style)
+        for pane in self.panes:
+            pane.mark_style = values.mark_style
+            pane.invalidate()
+        self.refresh()
+        if values.language != str(self.settings.value("app/language", language())):
+            self.set_ui_language(values.language)
 
     # ======================================================================
     # Comparação de texto
@@ -1127,8 +1554,8 @@ class MainWindow(QMainWindow):
         finally:
             QApplication.restoreOverrideCursor()
         self.diff_label.setText(self.diff_summary())
-        self.diff_label.setToolTip(tr("Verde: incluído · Vermelho: removido · Azul: alterado "
-                                   "(em relação ao primeiro PDF). F7 vai para a próxima diferença."))
+        self.diff_label.setToolTip(tr("Incluído · removido · alterado, em relação ao primeiro PDF "
+                                      "(cores em Ferramentas › Configurações). F7 vai para a próxima diferença."))
         self.diff_label.show()
         self.refresh()
 
@@ -1297,6 +1724,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # noqa: N802
         self.settings.setValue("window/geometry", self.saveGeometry())
         self.settings.setValue("view/results_panel", self.results_dock.isVisible())
+        self.settings.setValue("view/marks_panel", self.marks_dock.isVisible())
+        self.settings.setValue("view/mark_toolbar", self.mark_toolbar.isVisible())
         self._save_view_settings()
         self.indexer.clear()
         for session in self.sessions:
