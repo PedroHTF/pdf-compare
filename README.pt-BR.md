@@ -42,6 +42,7 @@ Na primeira execução o Windows SmartScreen pode avisar que o programa não é 
 | Ir à próxima ocorrência em **um** PDF | **▲ ▼** na etiqueta amarela do painel |
 | Ver todas as ocorrências em lista | **Lista de ocorrências** (Ctrl+Shift+F): trecho e página de cada uma; clique para ir até ela |
 | Ver as diferenças de texto | **Comparar texto** (Ctrl+D). F7 / Shift+F7 vão para a próxima / anterior diferença |
+| Comparar PDFs grandes por partes | A comparação é feita em lotes de páginas (padrão: 50). **Comparar próximo lote ▶** (F8) na barra de status; Shift+F8 volta |
 | Destacar, sublinhar ou tachar um trecho | Escolha a ferramenta na **barra de marcação** (Destacar: Ctrl+H) e arraste sobre o texto |
 | Desenhar retângulo, elipse, linha, seta ou à mão livre | Escolha a ferramenta e arraste na página |
 | Desenhar um polígono | Clique em cada vértice e dê duplo clique para terminar (Esc cancela) |
@@ -80,7 +81,18 @@ palavra por palavra. Cores: **verde** = incluído, **vermelho** (tachado) = remo
 **azul** = alterado. A comparação ignora quebras de linha e de página (texto que só mudou de
 página não aparece como diferença) e a pontuação nas bordas das palavras; maiúsculas e acentos
 contam. A barra de status mostra o total por PDF. As cores podem ser trocadas em
-**Editar › Configurações… › Cores da comparação**.
+**Editar › Configurações… › Comparação**.
+
+**Comparação em lotes.** Em PDFs grandes a comparação é dividida em lotes de páginas do 1º PDF
+(os outros acompanham o alinhamento de cada painel). A barra de status mostra "Lote 2 de 8 ·
+páginas 51–100", com **◀** e **Comparar próximo lote ▶** (F8). Ela roda em segundo plano, com
+progresso e botão **Cancelar**, sem travar o programa. Em **Editar › Configurações… › Comparação**:
+- **Páginas por lote** (ou "Tudo de uma vez");
+- **Comparar o próximo lote:** ao clicar, ou automaticamente em segundo plano, escolhendo
+  quantos lotes preparar à frente e se deve pausar enquanto você rola as páginas ou faz marcações;
+- **Comparações salvas:** os lotes comparados ficam guardados (`%APPDATA%\PDFCompare\PDF Compare\comparacoes`),
+  identificados pelo conteúdo dos PDFs, e são reaproveitados ao reabrir os mesmos arquivos.
+  Os não usados são apagados depois de N dias (ou nunca); **Limpar cache agora** apaga tudo.
 
 **Marcações.** Destaques, formas, textos, carimbos e notas ficam guardados na pasta de dados do programa
 (`%APPDATA%\PDFCompare\PDF Compare\anotacoes`), um arquivo por documento, identificado pelo
@@ -182,6 +194,8 @@ app/
   services/search.py       pesquisa de palavras e frases
   services/indexer.py      indexação em segundo plano sem travar a interface (e OCR, se ligado)
   services/text_diff.py    comparação de texto palavra por palavra
+  services/diff_batches.py lotes de páginas e cache das comparações em disco
+  services/batch_runner.py execução dos lotes em segundo plano
   services/annotations.py  marcações (destaques, formas, textos, carimbos, notas) fora do PDF; PDF anotado
   services/preferences.py  cores da comparação e estilo padrão das marcações
   services/export.py       exportação lado a lado e das páginas atuais (PDF/PNG)
@@ -221,7 +235,8 @@ samples/                   PDFs de exemplo
 - Preferências (zoom, opções de pesquisa, tamanho da janela, última pasta, listas laterais,
   recentes, OCR, cores e estilo das marcações) ficam salvas entre execuções.
 - A comparação de texto é feita em dois níveis (linhas, depois palavras dentro das linhas
-  diferentes) com `difflib`, para continuar rápida em documentos longos.
+  diferentes) com `difflib`, para continuar rápida em documentos longos. Ela roda em uma thread
+  separada sobre as palavras já extraídas (nunca o PyMuPDF), lote a lote, com cache em disco.
 - Os textos do código são escritos em português e passam por `tr()`; as traduções para o inglês
   ficam em `app/i18n_en.py`. O teste `tests/test_i18n.py` falha se algum texto ficar sem tradução.
 - Toda a lógica nova (diferenças, marcações, exportação, sessões, OCR) fica em `app/services`,

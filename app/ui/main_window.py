@@ -50,12 +50,14 @@ from app.services.annotations import (
     stamp_rect,
     words_in_rect,
 )
-from app.services.preferences import MarkStyle, Preferences, to_hex
+from app.services.batch_runner import BatchRunner
+from app.services.diff_batches import ALL_PAGES, DiffCache, batch_for_page, format_size
+from app.services.preferences import NEXT_AUTO, LOOKAHEAD_ALL, CompareSettings, MarkStyle, Preferences, to_hex
 from app.services.export import Column, ExportError, export_comparison, export_current_pages, safe_stem
 from app.services.indexer import IndexScheduler
 from app.services.navigation import NavigationController
 from app.services.search import SearchOptions, hit_snippet, search_index
-from app.services.text_diff import ADDED, CHANGED, REMOVED, count_by_kind, diff_documents
+from app.services.text_diff import ADDED, CHANGED, REMOVED, count_by_kind
 from app.services.workspace import (
     SESSION_SUFFIX,
     SessionData,
@@ -153,6 +155,16 @@ class MainWindow(QMainWindow):
         self._clipboard: Optional[Annotation] = None
         self._clipboard_source: Optional[Tuple[int, int]] = None   # (painel, página) de onde foi copiada
         self._last_pane = 0
+        self.compare: CompareSettings = self.prefs.compare_settings()
+        self.diff_cache = DiffCache(self.data_dir / "comparacoes")
+        self.diff_cache.purge(self.compare.cache_days)
+        self.runner = BatchRunner(self.diff_cache, self)
+        self.runner.changed.connect(self._on_batches_changed)
+        self.runner.progress.connect(self._on_batch_progress)
+        self._batch_signature: Optional[tuple] = None
+        self._current_batch = 0
+        self._jump_to_first_diff = False
+        self._alignment_changed = False   # o usuário ajustou o alinhamento de um painel
         self.sessions: List[DocumentSession] = []
         self.panes: List[PdfPane] = []
         self.nav = NavigationController()
@@ -249,6 +261,10 @@ class MainWindow(QMainWindow):
                                           tr("Ir para a próxima diferença de texto em cada PDF"))
         self.act_diff_prev = self._action(tr("Diferença anterior"), lambda: self.next_diff_all(-1), ["Shift+F7"],
                                           tr("Ir para a diferença de texto anterior em cada PDF"))
+        self.act_batch_next = self._action(tr("Comparar próximo lote"), self.compare_next_batch, ["F8"],
+                                           tr("Comparar o próximo lote de páginas e ir até ele"))
+        self.act_batch_prev = self._action(tr("Lote anterior"), self.go_previous_batch, ["Shift+F8"],
+                                           tr("Voltar ao lote de páginas anterior"))
 
         self.act_highlight = self._action(tr("&Destacar texto"), lambda: self.toggle_tool(TOOL_HIGHLIGHT), ["Ctrl+H"],
                                           tr("Arraste sobre o texto para destacá-lo"), checkable=True)
@@ -343,6 +359,7 @@ class MainWindow(QMainWindow):
         m.addActions([self.act_find, self.act_hit_next, self.act_hit_prev])
         m.addSeparator()
         m.addActions([self.act_diff_next, self.act_diff_prev])
+        m.addActions([self.act_batch_next, self.act_batch_prev])
 
         m = bar.addMenu(tr("&Exibir"))
         m.addActions([self.act_fit_width, self.act_fit_page, self.act_zoom_in, self.act_zoom_out])
@@ -530,6 +547,35 @@ class MainWindow(QMainWindow):
         button.setText(tr("Lista"))
         return button
 
+    def _create_batch_bar(self) -> None:
+        from PySide6.QtWidgets import QHBoxLayout, QToolButton
+
+        self.batch_bar = QWidget()
+        self.batch_bar.setObjectName("batchBar")
+        row = QHBoxLayout(self.batch_bar)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        self.batch_prev_btn = QToolButton()
+        self.batch_prev_btn.setText("◀")
+        self.batch_prev_btn.setToolTip(self.act_batch_prev.toolTip())
+        self.batch_prev_btn.clicked.connect(self.act_batch_prev.trigger)
+        self.batch_label = QLabel()
+        self.batch_next_btn = QToolButton()
+        self.batch_next_btn.clicked.connect(self.act_batch_next.trigger)
+        self.batch_next_btn.setToolTip(self.act_batch_next.toolTip())
+        self.batch_progress = QProgressBar()
+        self.batch_progress.setMaximumWidth(120)
+        self.batch_progress.setTextVisible(False)
+        self.batch_cancel_btn = QToolButton()
+        self.batch_cancel_btn.setText(tr("Cancelar"))
+        self.batch_cancel_btn.setToolTip(tr("Cancelar a comparação em andamento (os lotes prontos continuam)"))
+        self.batch_cancel_btn.clicked.connect(self.cancel_batches)
+        for w in (self.batch_prev_btn, self.batch_label, self.batch_next_btn, self.batch_progress,
+                  self.batch_cancel_btn):
+            row.addWidget(w)
+        self.batch_bar.hide()
+        self.statusBar().insertPermanentWidget(0, self.batch_bar)
+
     def _create_status_bar(self) -> None:
         self.hint_label = QLabel()
         self.hint_label.setObjectName("muted")
@@ -538,6 +584,7 @@ class MainWindow(QMainWindow):
         self.diff_label.setObjectName("diffSummary")
         self.diff_label.hide()
         self.statusBar().addPermanentWidget(self.diff_label)
+        self._create_batch_bar()
         self.progress = QProgressBar()
         self.progress.setMaximumWidth(240)
         self.progress.setFormat(tr("Preparando pesquisa… %p%"))
@@ -723,31 +770,39 @@ class MainWindow(QMainWindow):
     # Navegação
     # ======================================================================
     def step(self, delta: int) -> None:
+        self._user_busy()
         if self.sessions:
             self.nav.step(delta)
             self.refresh()
 
     def go_first(self) -> None:
+        self._user_busy()
         if self.sessions:
             self.nav.go_first()
             self.refresh()
 
     def go_last(self) -> None:
+        self._user_busy()
         if self.sessions:
             self.nav.go_last()
             self.refresh()
 
     def realign(self) -> None:
+        self._alignment_changed = True
         if self.sessions:
             self.nav.realign()
             self.refresh()
             self.statusBar().showMessage(tr("Todos os PDFs realinhados na mesma página."), 3000)
 
     def _on_pane_step(self, index: int, delta: int) -> None:
+        self._user_busy()
+        self._alignment_changed = True
         self.nav.step_pane(index, delta)
         self.refresh()
 
     def _on_pane_jump(self, index: int, page: int) -> None:
+        self._user_busy()
+        self._alignment_changed = True
         self.nav.show_page(index, page)
         self.refresh()
 
@@ -756,6 +811,7 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def _on_pane_scrolled(self, index: int, ratio: float) -> None:
+        self._user_busy()
         if not self.act_linked_scroll.isChecked():
             return
         for pane in self.panes:
@@ -764,6 +820,8 @@ class MainWindow(QMainWindow):
 
     def refresh(self) -> None:
         active = bool(self._query)
+        if self.act_diff.isChecked() and self.runner.batches:
+            self._ensure_batches()
         selected = self.selected_annotation()
         if self._selection is not None and (selected is None or self.nav.page_for(self._selection[0]) != selected.page):
             self._selection = None   # a marcação selecionada saiu de vista
@@ -1297,6 +1355,7 @@ class MainWindow(QMainWindow):
             self.annotations.restore(key, before, name)
             self._notify("warning", tr("Anotação não salva"), tr("Não foi possível gravar a anotação: {error}", error=exc))
             return False
+        self._user_busy()
         self._undo.append(UndoStep(key, name, before, self.annotations.snapshot(key)))
         del self._undo[:-200]
         self._redo.clear()
@@ -1506,9 +1565,10 @@ class MainWindow(QMainWindow):
         tessdata = ocr.find_tessdata()
         langs = ", ".join(ocr.installed_languages(tessdata)) or tr("nenhum (Tesseract não encontrado)")
         values = SettingsValues(str(self.settings.value("app/language", language())), self.ocr_language(),
-                                self.prefs.diff_colors(), self.mark_style)
+                                self.prefs.diff_colors(), self.mark_style, self.compare)
         dialog = SettingsDialog(values, tr("Idiomas instalados: {langs}. Use + para combinar (ex.: eng+por).",
-                                           langs=langs), self)
+                                           langs=langs), self,
+                                cache_info=self.cache_summary, clear_cache=self.clear_diff_cache)
         if dialog.exec():
             self.apply_settings(dialog.values())
 
@@ -1523,41 +1583,215 @@ class MainWindow(QMainWindow):
         for pane in self.panes:
             pane.mark_style = values.mark_style
             pane.invalidate()
+        self.set_compare_settings(values.compare)
         self.refresh()
         if values.language != str(self.settings.value("app/language", language())):
             self.set_ui_language(values.language)
+
+    def set_compare_settings(self, compare: CompareSettings) -> None:
+        old = self.compare
+        self.compare = compare
+        self.prefs.set_compare_settings(compare)
+        if compare.cache_days != old.cache_days:
+            self.diff_cache.purge(compare.cache_days)
+        if compare.batch_size != old.batch_size:
+            self._batch_signature = None        # novo tamanho de lote: replaneja
+        if compare.next_mode != NEXT_AUTO and old.next_mode == NEXT_AUTO:
+            self.runner.cancel_background()
+        if self.act_diff.isChecked():
+            self.update_diff()
+
+    def cache_summary(self) -> str:
+        return tr("{n} resultado(s) salvos · {size}", n=self.diff_cache.count(),
+                  size=format_size(self.diff_cache.size_bytes()))
+
+    def clear_diff_cache(self) -> None:
+        self.diff_cache.clear()
 
     # ======================================================================
     # Comparação de texto
     # ======================================================================
     def toggle_diff(self) -> None:
+        self._jump_to_first_diff = self.act_diff.isChecked()
         self.update_diff()
         if self.act_diff.isChecked() and self.nav.total_diffs:
+            self._jump_to_first_diff = False
             self.next_diff_all(+1)
 
+    def _diff_signature(self, indexes) -> tuple:
+        offsets = tuple(s.offset for s in self.sessions)
+        return (tuple(s.uid for s in self.sessions), tuple(id(i) for i in indexes),
+                self.compare.batch_size, offsets, self.indexer.ocr_enabled, self.indexer.ocr_language)
+
     def update_diff(self) -> None:
+        """(Re)planeja a comparação em lotes e pede os lotes necessários."""
         if not self.act_diff.isChecked() or len(self.sessions) < 2:
+            self.runner.reset()
+            self._batch_signature = None
             self.nav.clear_diffs()
             self.diff_label.hide()
+            self.batch_bar.hide()
             self.refresh()
             return
         indexes = [self.indexer.index_for(s) for s in self.sessions]
-        if any(i is None or not i.complete for i in indexes):
+        keys = [self.annotation_key(i) for i in range(len(self.sessions))]
+        if any(i is None for i in indexes) or any(k is None for k in keys):
             self.nav.clear_diffs()
-            self.diff_label.setText(tr("Comparando texto… aguardando a leitura dos PDFs"))
-            self.diff_label.show()
-            self.refresh()
+            self._update_batch_status()
             return
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            self.nav.set_diffs(diff_documents(indexes))
-        finally:
-            QApplication.restoreOverrideCursor()
-        self.diff_label.setText(self.diff_summary())
+        signature = self._diff_signature(indexes)
+        if self._batch_signature is not None and not self._alignment_changed:
+            # ir à próxima diferença/ocorrência também move os PDFs, mas não muda o plano
+            signature = signature[:3] + self._batch_signature[3:4] + signature[4:]
+        self._alignment_changed = False
+        if not self._same_plan(signature):
+            ref_offset = self.sessions[0].offset
+            offsets = [ref_offset - s.offset for s in self.sessions]   # página do PDF i = página da referência + isto
+            options = f"ocr={int(self.indexer.ocr_enabled)}:{self.indexer.ocr_language}"
+            self.runner.configure(indexes, keys, offsets, self.compare.batch_size, options)
+            self._batch_signature = signature
+            self.nav.clear_diffs()
+            if self.compare.next_mode != NEXT_AUTO and self.runner.batches:
+                self.runner.request(self._batch_at_view())   # no modo "ao clicar", só o lote à vista
+        self._ensure_batches()
+        self._update_batch_status()
+        self.refresh()
+
+    def _same_plan(self, signature: tuple) -> bool:
+        old = self._batch_signature
+        if old is None:
+            return False
+        if len(self.runner.batches) <= 1:   # um lote só: o alinhamento não muda o que é comparado
+            return old[:3] == signature[:3] and old[4:] == signature[4:]
+        return old == signature
+
+    def _batch_at_view(self) -> int:
+        if not self.runner.batches or not self.sessions:
+            return 0
+        ref = self.sessions[0]
+        page = min(max(self.nav.raw_page(0), 0), max(ref.page_count - 1, 0))
+        return batch_for_page(self.runner.batches, page)
+
+    def _ensure_batches(self) -> None:
+        """Pede o lote à vista e, no modo automático, os seguintes em segundo plano."""
+        batches = self.runner.batches
+        if not batches:
+            return
+        if self._alignment_changed and len(batches) > 1:
+            offsets = tuple(s.offset for s in self.sessions)
+            if self._batch_signature is not None and offsets != self._batch_signature[3]:
+                self.update_diff()   # o usuário realinhou um PDF: replaneja os lotes
+                return
+            self._alignment_changed = False
+        current = self._batch_at_view()
+        moved = current != self._current_batch
+        self._current_batch = current
+        if self.compare.next_mode == NEXT_AUTO or len(batches) == 1:
+            self.runner.request(current, priority=True)
+            ahead = len(batches) if self.compare.lookahead == LOOKAHEAD_ALL else self.compare.lookahead
+            for k in range(current + 1, min(current + 1 + ahead, len(batches))):
+                self.runner.request(k, priority=False)
+        if moved:
+            self._update_batch_status()
+
+    def compare_next_batch(self) -> None:
+        """Compara o lote à vista (se ainda não foi) ou o próximo, e vai até ele."""
+        if not self.runner.batches:
+            return
+        current = self._batch_at_view()
+        if not self.runner.is_done(current) and not self.runner.is_pending(current):
+            self.runner.request(current, priority=True)
+        elif current + 1 < len(self.runner.batches):
+            self.runner.request(current + 1, priority=True)
+            self.go_to_batch(current + 1)
+        self._update_batch_status()
+
+    def go_previous_batch(self) -> None:
+        current = self._batch_at_view()
+        if current > 0:
+            self.go_to_batch(current - 1)
+
+    def go_to_batch(self, number: int) -> None:
+        if not (0 <= number < len(self.runner.batches)):
+            return
+        start = self.runner.batches[number].ref_range[0]
+        self.nav.go_to(start + self.sessions[0].offset)
+        self.refresh()
+        self._update_batch_status()
+
+    def cancel_batches(self) -> None:
+        self.runner.cancel()
+        self.statusBar().showMessage(tr("Comparação cancelada. Os lotes já comparados continuam valendo."), 4000)
+        self._update_batch_status()
+
+    def _user_busy(self) -> None:
+        if self.compare.pause_while_busy and self.runner.background_pending():
+            self.runner.pause_for(1.5)
+
+    def _on_batches_changed(self) -> None:
+        self.nav.set_diffs(self.runner.marks())
+        if self._jump_to_first_diff and self.nav.total_diffs:
+            self._jump_to_first_diff = False
+            self.nav.step_diff_all(+1)
+        self._update_batch_status()
+        self.refresh()
+
+    def _on_batch_progress(self, done: int, total: int) -> None:
+        self.batch_progress.setVisible(total > 0)
+        self.batch_cancel_btn.setVisible(total > 0)
+        if total > 0:
+            self.batch_progress.setMaximum(total)
+            self.batch_progress.setValue(done)
+        self._update_batch_status()
+
+    def _update_batch_status(self) -> None:
+        on = self.act_diff.isChecked() and len(self.sessions) >= 2
+        batches = self.runner.batches
+        multi = on and len(batches) > 1
+        current = self._batch_at_view() if batches else 0
+        self.batch_bar.setVisible(multi or (on and self.runner.busy))
+        self.hint_label.setVisible(not self.batch_bar.isVisibleTo(self))   # dá espaço à barra de lotes
+        self.batch_label.setVisible(multi)
+        self.batch_prev_btn.setVisible(multi)
+        self.batch_next_btn.setVisible(multi)
+        busy = self.runner.busy
+        self.batch_progress.setVisible(busy)
+        self.batch_cancel_btn.setVisible(busy)
+        if multi:
+            first, last = batches[current].label_pages()
+            label = tr("Lote {n} de {total} · páginas {first}–{last}", n=current + 1,
+                       total=len(batches), first=first, last=last)
+            if not self.runner.is_done(current):
+                label += " · " + tr("comparando…") if self.runner.is_pending(current) else " · " + tr("não comparado")
+            self.batch_label.setText(label)
+            self.batch_label.setToolTip(tr("{done} de {total} lotes comparados", done=self.runner.done_count(),
+                                           total=len(batches)))
+            pending_here = not self.runner.is_done(current)
+            this_one = pending_here and not self.runner.is_pending(current)
+            self.act_batch_next.setText(tr("Comparar este lote") if this_one else tr("Comparar próximo lote ▶"))
+            self.batch_next_btn.setText(tr("Comparar este lote") if this_one else tr("Próximo lote ▶"))
+            self.act_batch_next.setEnabled(this_one or current + 1 < len(batches))
+            self.act_batch_prev.setEnabled(current > 0)
+        else:
+            self.act_batch_next.setEnabled(False)
+            self.act_batch_prev.setEnabled(False)
+        self.batch_next_btn.setEnabled(self.act_batch_next.isEnabled())
+        self.batch_prev_btn.setEnabled(self.act_batch_prev.isEnabled())
+        if not on:
+            return
+        done = self.runner.done_count()
+        if done == 0:
+            if self.runner.busy:
+                text = tr("Comparando texto… aguardando a leitura dos PDFs") if self.indexer.busy \
+                    else tr("Comparando texto…")
+            else:
+                text = tr("Lote ainda não comparado — use “Comparar este lote” (F8)")
+            self.diff_label.setText(text)
+        else:
+            self.diff_label.setText(self.diff_summary())
         self.diff_label.setToolTip(tr("Incluído · removido · alterado, em relação ao primeiro PDF "
                                       "(cores em Ferramentas › Configurações). F7 vai para a próxima diferença."))
         self.diff_label.show()
-        self.refresh()
 
     def diff_summary(self) -> str:
         if self.nav.total_diffs == 0:
@@ -1727,6 +1961,7 @@ class MainWindow(QMainWindow):
         self.settings.setValue("view/marks_panel", self.marks_dock.isVisible())
         self.settings.setValue("view/mark_toolbar", self.mark_toolbar.isVisible())
         self._save_view_settings()
+        self.runner.shutdown()
         self.indexer.clear()
         for session in self.sessions:
             session.close()
