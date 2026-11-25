@@ -49,8 +49,15 @@ def main(argv: list[str]) -> int:
     if not version_section(changelog, version):
         print(f"Aviso: CHANGELOG.md não tem a seção ## [{version}]", file=sys.stderr)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(build_notes(version, changelog, TEMPLATE.read_text(encoding="utf-8")), encoding="utf-8")
-    print(out.read_text(encoding="utf-8"))
+    notes = build_notes(version, changelog, TEMPLATE.read_text(encoding="utf-8"))
+    out.write_text(notes, encoding="utf-8")
+    # o console do Windows (cp1252) não mostra "☕", "›"...: escreve em UTF-8, trocando o que não couber
+    stream = getattr(sys.stdout, "buffer", None)
+    if stream is not None:
+        stream.write(notes.encode("utf-8", errors="replace"))
+        stream.flush()
+    else:
+        print(notes.encode(sys.stdout.encoding or "ascii", errors="replace").decode(sys.stdout.encoding or "ascii"))
     return 0
 
 

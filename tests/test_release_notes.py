@@ -54,3 +54,13 @@ def test_real_changelog_has_summaries_for_current_version(tmp_path):
     text = out.read_text(encoding="utf-8")
     assert f"PDFCompare-Setup-{__version__}.exe" in text and "{" not in text
     assert "## O que mudou" in text and "## What's new" in text and "Marcações completas" in text
+
+
+def test_runs_on_a_windows_console_encoding(tmp_path, monkeypatch):
+    import io
+    import sys
+
+    raw = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="cp1252"))
+    assert main(["release_notes", __version__, str(tmp_path / "n.md")]) == 0
+    assert "☕".encode("utf-8") in raw.getvalue()
