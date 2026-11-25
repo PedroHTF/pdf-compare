@@ -12,11 +12,13 @@ from typing import Dict, Optional, Tuple
 from app.services.annotations import HIGHLIGHT_COLOR, SHAPE_COLOR, Color
 from app.services.diff_batches import DEFAULT_BATCH_SIZE, DEFAULT_RETENTION_DAYS
 from app.services.text_diff import ADDED, CHANGED, REMOVED
+from app.services.visual_diff import DEFAULT_SENSITIVITY, VISUAL
 
 DEFAULT_DIFF_COLORS: Dict[str, Color] = {
     ADDED: (52 / 255, 168 / 255, 83 / 255),     # verde
     REMOVED: (234 / 255, 67 / 255, 53 / 255),   # vermelho
     CHANGED: (66 / 255, 133 / 255, 244 / 255),  # azul
+    VISUAL: (200 / 255, 40 / 255, 200 / 255),   # magenta
 }
 
 
@@ -65,6 +67,7 @@ class CompareSettings:
     pause_while_busy: bool = True           # segundo plano espera o usuário parar de rolar/anotar
     cache_days: int = DEFAULT_RETENTION_DAYS    # 0 = nunca apagar
     realign_mode: str = REALIGN_ON_CLICK
+    visual_sensitivity: int = DEFAULT_SENSITIVITY   # diferença visual: 1 (pouco) a 100 (muito sensível)
 
 
 DEFAULT_COMPARE = CompareSettings()
@@ -100,6 +103,7 @@ class Preferences:
             pause = pause.lower() in ("true", "1", "yes")
         realign = str(self.settings.value("compare/realign_mode", d.realign_mode))
         return CompareSettings(
+            visual_sensitivity=self._int("compare/visual_sensitivity", d.visual_sensitivity, 1, 100),
             realign_mode=realign if realign in (REALIGN_ON_CLICK, REALIGN_AUTO) else d.realign_mode,
             batch_size=self._int("compare/batch_size", d.batch_size, 0, 100000),
             next_mode=mode if mode in (NEXT_ON_CLICK, NEXT_AUTO) else d.next_mode,
@@ -115,6 +119,7 @@ class Preferences:
         self.settings.setValue("compare/pause_while_busy", c.pause_while_busy)
         self.settings.setValue("compare/cache_days", c.cache_days)
         self.settings.setValue("compare/realign_mode", c.realign_mode)
+        self.settings.setValue("compare/visual_sensitivity", c.visual_sensitivity)
 
     # --- estilo das marcações -------------------------------------------------------
     def _float(self, key: str, default: float, low: float, high: float) -> float:

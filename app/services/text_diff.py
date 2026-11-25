@@ -38,6 +38,7 @@ class _Word:
     page: int
     text: str
     rects: Tuple[Rect, ...]
+    raw: str = ""          # texto original (para o relatório)
 
 
 PageRange = Tuple[int, int]   # páginas [início, fim)
@@ -58,7 +59,8 @@ def _words(index: DocumentIndex, case_sensitive: bool, ignore_accents: bool,
                 lines.append((start, len(words)))
                 start = len(words)
             last_line = token.line
-            words.append(_Word(page_no, fold(token.text, case_sensitive, ignore_accents), tuple(token.rects)))
+            words.append(_Word(page_no, fold(token.text, case_sensitive, ignore_accents), tuple(token.rects),
+                               token.raw or token.text))
         if len(words) > start:
             lines.append((start, len(words)))
     return words, lines
@@ -180,6 +182,61 @@ def merge_results(documents: int, pairs: Sequence[Tuple[int, int]],
         marks = as_other[doc] if doc in as_other else list(as_base.get(doc, {}).values())
         out.append(sorted(marks, key=reading_order))
     return out
+
+
+@dataclass(frozen=True)
+class ReportEntry:
+    """Uma mudança, para o relatório: o texto na base (a) e no PDF comparado (b)."""
+
+    kind: str
+    page_a: Optional[int]   # página onde está (ou estaria) o trecho no PDF a
+    text_a: str
+    page_b: Optional[int]
+    text_b: str
+
+
+def _text(words: Sequence[_Word], start: int, end: int, limit: int = 400) -> str:
+    text = " ".join(w.raw or w.text for w in words[start:end])
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _page_at(words: Sequence[_Word], start: int, end: int) -> Optional[int]:
+    if start < end:
+        return words[start].page
+    if start < len(words):
+        return words[start].page
+    return words[-1].page if words else None
+
+
+def report_entries(ref: DocumentIndex, other: DocumentIndex, case_sensitive: bool = True,
+                   ignore_accents: bool = False) -> List[ReportEntry]:
+    """Lista legível das mudanças entre dois documentos inteiros (mesmo método de diff_pair)."""
+    wa, la = _words(ref, case_sensitive, ignore_accents)
+    wb, lb = _words(other, case_sensitive, ignore_accents)
+    keys_a = [" ".join(w.text for w in wa[s:e]) for s, e in la]
+    keys_b = [" ".join(w.text for w in wb[s:e]) for s, e in lb]
+    entries: List[ReportEntry] = []
+    for tag, i1, i2, j1, j2 in SequenceMatcher(None, keys_a, keys_b, autojunk=False).get_opcodes():
+        if tag == "equal":
+            continue
+        a0 = la[i1][0] if i1 < i2 else (la[i1][0] if i1 < len(la) else len(wa))
+        a1 = la[i2 - 1][1] if i1 < i2 else a0
+        b0 = lb[j1][0] if j1 < j2 else (lb[j1][0] if j1 < len(lb) else len(wb))
+        b1 = lb[j2 - 1][1] if j1 < j2 else b0
+        if a0 == a1 or b0 == b1 or (a1 - a0) * (b1 - b0) > MAX_WORD_PAIRS:
+            kind = ADDED if a0 == a1 else REMOVED if b0 == b1 else CHANGED
+            entries.append(ReportEntry(kind, _page_at(wa, a0, a1), _text(wa, a0, a1),
+                                       _page_at(wb, b0, b1), _text(wb, b0, b1)))
+            continue
+        ta = [w.text for w in wa[a0:a1]]
+        tb = [w.text for w in wb[b0:b1]]
+        for op, x1, x2, y1, y2 in SequenceMatcher(None, ta, tb, autojunk=False).get_opcodes():
+            if op == "equal":
+                continue
+            kind = {"replace": CHANGED, "delete": REMOVED, "insert": ADDED}[op]
+            entries.append(ReportEntry(kind, _page_at(wa, a0 + x1, a0 + x2), _text(wa, a0 + x1, a0 + x2),
+                                       _page_at(wb, b0 + y1, b0 + y2), _text(wb, b0 + y1, b0 + y2)))
+    return entries
 
 
 def count_by_kind(marks: Sequence[DiffMark]) -> Dict[str, int]:

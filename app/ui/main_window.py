@@ -6,6 +6,7 @@ from __future__ import annotations
 from app.i18n import LANGUAGES, language, tr
 
 from pathlib import Path
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -60,7 +61,9 @@ from app.services.content_align import (
     match_lines,
     rows_key,
 )
+from app.services.report import PairReport, make_report, write_report
 from app.services.strip_layout import StripLayout, compute_layouts
+from app.services.visual_diff import VISUAL, page_difference
 from app.services.diff_batches import ALL_PAGES, DiffCache, batch_for_page, format_size, plan_batches_from_rows
 from app.services.preferences import (
     LOOKAHEAD_ALL,
@@ -75,7 +78,7 @@ from app.services.export import Column, ExportError, export_comparison, export_c
 from app.services.indexer import IndexScheduler
 from app.services.navigation import NavigationController
 from app.services.search import SearchOptions, hit_snippet, search_index
-from app.services.text_diff import ADDED, CHANGED, REMOVED, count_by_kind
+from app.services.text_diff import ADDED, CHANGED, REMOVED, DiffMark, count_by_kind, report_entries
 from app.services.workspace import (
     SESSION_SUFFIX,
     SessionData,
@@ -190,6 +193,7 @@ class MainWindow(QMainWindow):
         self._heights: Dict[int, List[float]] = {}  # alturas das páginas por PDF (uid)
         self._strip_position: Optional[int] = None  # posição já mostrada na rolagem contínua
         self._pick: Optional[Tuple[int, int, float]] = None   # 1º ponto de "Alinhar este trecho com…"
+        self._visual_cache: "OrderedDict[tuple, tuple]" = OrderedDict()   # diferença visual por par de páginas
         self.reference_uid: Optional[int] = None   # PDF de referência (None = o primeiro)
         self.chain_mode = False                    # cada PDF comparado com o anterior
         self._alignment_touched = False   # o usuário acabou de ajustar o alinhamento de um painel
@@ -266,6 +270,9 @@ class MainWindow(QMainWindow):
                                              tr("Salvar os PDFs abertos, as páginas e o zoom para reabrir depois"))
         self.act_export = self._action(tr("&Exportar…"), self.export_dialog, ["Ctrl+E"],
                                        tr("Exportar a comparação ou as páginas atuais como PDF ou PNG"))
+        self.act_report = self._action(tr("&Relatório de diferenças…"), self.export_report, ["Ctrl+Shift+R"],
+                                       tr("Salvar a lista de mudanças entre os PDFs (página, texto antes e depois) "
+                                          "em PDF, HTML ou CSV"))
         self.act_close_all = self._action(tr("&Fechar todos"), self.close_all, ["Ctrl+Shift+W"],
                                           tr("Fechar todos os PDFs"), S.SP_DialogCloseButton)
         self.act_quit = self._action(tr("Sai&r"), self.close, ["Ctrl+Q"], tr("Sair do programa"))
@@ -296,8 +303,14 @@ class MainWindow(QMainWindow):
                                          tr("Ir para a ocorrência anterior em cada PDF"))
 
         self.act_diff = self._action(tr("Comparar &texto"), self.toggle_diff, ["Ctrl+D"],
-                                     tr("Destacar as diferenças de texto em relação ao primeiro PDF"),
+                                     tr("Destacar as diferenças de texto em relação à referência"),
                                      checkable=True)
+        self.act_visual_diff = self._action(
+            tr("Diferença &visual"), self.toggle_visual_diff, ["Ctrl+Shift+V"],
+            tr("Destacar áreas com aparência diferente, pixel a pixel (imagens, assinaturas, carimbos, "
+               "páginas escaneadas). Funciona com ou sem a comparação de texto."), checkable=True)
+        self.act_visual_diff.setIconText(tr("Visual"))
+        self.act_visual_diff.setChecked(self._bool_setting("view/visual_diff", False))
         self.act_diff_next = self._action(tr("Próxima diferença"), lambda: self.next_diff_all(+1), ["F7"],
                                           tr("Ir para a próxima diferença de texto em cada PDF"))
         self.act_diff_prev = self._action(tr("Diferença anterior"), lambda: self.next_diff_all(-1), ["Shift+F7"],
@@ -390,6 +403,7 @@ class MainWindow(QMainWindow):
         m.addActions([self.act_open_session, self.act_save_session])
         m.addSeparator()
         m.addAction(self.act_export)
+        m.addAction(self.act_report)
         m.addSeparator()
         m.addAction(self.act_close_all)
         m.addSeparator()
@@ -428,6 +442,7 @@ class MainWindow(QMainWindow):
         marks.addAction(self.act_stamp)
         m.addSeparator()
         m.addAction(self.act_diff)
+        m.addAction(self.act_visual_diff)
         self.reference_menu = m.addMenu(tr("&Referência da comparação"))
         self.reference_menu.aboutToShow.connect(self._fill_reference_menu)
         m.addSeparator()
@@ -479,6 +494,7 @@ class MainWindow(QMainWindow):
         tb.addAction(self.act_continuous)
         tb.addSeparator()
         tb.addAction(self.act_diff)
+        tb.addAction(self.act_visual_diff)
         tb.addSeparator()
         tb.addAction(self.act_export)
 
@@ -646,6 +662,10 @@ class MainWindow(QMainWindow):
         self.diff_label.setObjectName("diffSummary")
         self.diff_label.hide()
         self.statusBar().addPermanentWidget(self.diff_label)
+        self.visual_label = QLabel()
+        self.visual_label.setObjectName("diffSummary")
+        self.visual_label.hide()
+        self.statusBar().addPermanentWidget(self.visual_label)
         self._create_batch_bar()
         self.progress = QProgressBar()
         self.progress.setMaximumWidth(240)
@@ -811,6 +831,7 @@ class MainWindow(QMainWindow):
             pane.annotation_changed.connect(self._on_mark_changed)
             pane.selection_changed.connect(self._on_selection)
             pane.edit_requested.connect(self.edit_annotation)
+            pane.visual_provider = lambda page, i=i: self.visual_marks(i, page)
             pane.strip_scrolled.connect(self._on_strip_scrolled)
             pane.gap_resized.connect(self._on_gap_resized)
             pane.point_picked.connect(self._on_point_picked)
@@ -930,6 +951,7 @@ class MainWindow(QMainWindow):
             self._selection = None   # a marcação selecionada saiu de vista
             for pane in self.panes:
                 pane.selected_id = ""
+        visual_total = 0
         for i, pane in enumerate(self.panes):
             page = self.nav.page_for(i)
             current = self.nav.current_hit(i)
@@ -942,10 +964,13 @@ class MainWindow(QMainWindow):
             if page is None and self.nav.by_rows:
                 blank = tr("Sem página correspondente neste PDF.\nO conteúdo dos outros PDFs nesta posição "
                            "foi incluído neles ou removido deste.")
+            visual = self.visual_marks(i, page)
+            visual_total += len(visual)
             pane.render(page, self.nav.raw_page(i), self.nav.page_hits(i, page), current, self.zoom_mode,
-                        self.nav.page_diffs(i, page), diff, self.page_annotations(i, page), blank)
+                        self.nav.page_diffs(i, page), diff, self.page_annotations(i, page), blank, visual)
             position = self.nav.hit_index[i] if current is not None else -1
             pane.set_hit_status(active, self.nav.hit_count(i), position)
+        self._update_visual_label(visual_total)
         self._update_ui_state()
 
     # ======================================================================
@@ -1098,6 +1123,8 @@ class MainWindow(QMainWindow):
         self.act_delete_mark.setEnabled(self._selection is not None)
         self.act_paste_mark.setEnabled(has and self._clipboard is not None)
         self.act_diff.setEnabled(n >= 2)
+        self.act_visual_diff.setEnabled(n >= 2)
+        self.act_report.setEnabled(n >= 2)
         has_diffs = n >= 2 and self.act_diff.isChecked() and self.nav.total_diffs > 0
         self.act_diff_next.setEnabled(has_diffs)
         self.act_diff_prev.setEnabled(has_diffs)
@@ -1176,6 +1203,8 @@ class MainWindow(QMainWindow):
             ("Ctrl+Shift+M", tr("Mostrar/ocultar a lista de marcações")),
             ("Ctrl+Shift+L", tr("Alinhar por conteúdo")),
             ("Ctrl+Shift+C", tr("Rolagem contínua")),
+            ("Ctrl+Shift+V", tr("Diferença visual")),
+            ("Ctrl+Shift+R", tr("Relatório de diferenças")),
             ("Ctrl+,", tr("Configurações")),
             (tr("Ctrl + roda do mouse"), "Zoom"),
             ("Ctrl++ / Ctrl+-", tr("Aumentar / diminuir zoom")),
@@ -1721,6 +1750,11 @@ class MainWindow(QMainWindow):
         self.prefs.set_compare_settings(compare)
         if compare.cache_days != old.cache_days:
             self.diff_cache.purge(compare.cache_days)
+        if compare.visual_sensitivity != old.visual_sensitivity:
+            self._visual_cache.clear()
+            for pane in self.panes:
+                pane.invalidate()
+                pane.canvas.invalidate()
         if compare.batch_size != old.batch_size:
             self._batch_signature = None        # novo tamanho de lote: replaneja
             self._realign_pending = False
@@ -2141,6 +2175,7 @@ class MainWindow(QMainWindow):
                 focused = i
             position = self.nav.hit_index[i] if self.nav.current_hit(i) is not None else -1
             pane.set_hit_status(active, self.nav.hit_count(i), position)
+        self._update_visual_label(None)
         if focused is not None:
             if self.nav.by_rows and self.act_linked_scroll.isChecked():
                 value = self.panes[focused].strip_value()
@@ -2292,6 +2327,123 @@ class MainWindow(QMainWindow):
         self._align_version += 1
         self.refresh()
         self.statusBar().showMessage(message, 5000)
+
+    # --- diferença visual -----------------------------------------------------------------
+    def toggle_visual_diff(self) -> None:
+        on = self.act_visual_diff.isChecked()
+        self.settings.setValue("view/visual_diff", on)
+        for pane in self.panes:
+            pane.invalidate()
+        self.refresh()
+        if on:
+            self.statusBar().showMessage(
+                tr("Diferença visual ligada: áreas diferentes aparecem com contorno tracejado. "
+                   "A sensibilidade fica em Configurações › Comparação."), 6000)
+
+    def _partner_page(self, index: int, page: int, other: int) -> Optional[int]:
+        """Página do PDF `other` que fica ao lado da página `page` do PDF `index`."""
+        if self.nav.by_rows:
+            row = self.nav.row_of(index, page)
+            return self.nav.rows[row][other] if row is not None else None
+        partner = page + self.sessions[index].offset - self.sessions[other].offset
+        return partner if 0 <= partner < self.sessions[other].page_count else None
+
+    def visual_marks(self, index: int, page: Optional[int]) -> List[DiffMark]:
+        """Áreas da diferença visual na página `page` do PDF `index` (comparada com o par dela)."""
+        if not self.act_visual_diff.isChecked() or page is None or len(self.sessions) < 2:
+            return []
+        out: List[DiffMark] = []
+        for a, b in self.comparison_pairs():
+            if index not in (a, b):
+                continue
+            other = b if index == a else a
+            partner = self._partner_page(index, page, other)
+            if partner is None:
+                continue
+            pa, pb = (page, partner) if index == a else (partner, page)
+            boxes = self._visual_pair(a, pa, b, pb)
+            mine = boxes[0] if index == a else boxes[1]
+            out += [DiffMark(page, (rect,), VISUAL) for rect in mine]
+        return out
+
+    def _visual_pair(self, a: int, page_a: int, b: int, page_b: int) -> tuple:
+        sa, sb = self.sessions[a], self.sessions[b]
+        key = (self.annotation_key(a) or sa.uid, page_a, self.annotation_key(b) or sb.uid, page_b,
+               self.compare.visual_sensitivity)
+        if key in self._visual_cache:
+            self._visual_cache.move_to_end(key)
+            return self._visual_cache[key]
+        try:
+            result = page_difference(sa.doc[page_a], sb.doc[page_b], self.compare.visual_sensitivity)
+        except (RuntimeError, ValueError, IndexError):
+            result = ([], [])
+        self._visual_cache[key] = result
+        while len(self._visual_cache) > 300:
+            self._visual_cache.popitem(last=False)
+        return result
+
+    def _update_visual_label(self, count: Optional[int]) -> None:
+        on = self.act_visual_diff.isChecked() and len(self.sessions) >= 2
+        self.visual_label.setVisible(on)
+        if not on:
+            return
+        if count is None:
+            self.visual_label.setText(tr("Diferença visual ligada"))
+        else:
+            self.visual_label.setText(tr("Diferença visual: {n} área(s) nas páginas à vista", n=count))
+        self.visual_label.setToolTip(tr("Áreas com aparência diferente (imagens, assinaturas, carimbos, "
+                                        "páginas escaneadas), com contorno tracejado."))
+
+    # --- relatório de diferenças -------------------------------------------------------------
+    REPORT_FILTERS = {"pdf": "PDF (*.pdf)", "html": "HTML (*.html)", "csv": "CSV (*.csv)"}
+
+    def export_report(self) -> None:
+        if len(self.sessions) < 2:
+            return
+        indexes = [self.indexer.index_for(s) for s in self.sessions]
+        if any(i is None or not i.complete for i in indexes):
+            self.statusBar().showMessage(tr("Aguarde terminar a leitura dos PDFs para gerar o relatório."), 5000)
+            return
+        start_dir = str(self.settings.value("files/export_dir", self.settings.value("files/last_dir", "")))
+        default = Path(start_dir) / tr("relatorio_de_diferencas.pdf")
+        filters = ";;".join(self.REPORT_FILTERS.values())
+        path, chosen = QFileDialog.getSaveFileName(self, tr("Salvar relatório de diferenças"), str(default), filters)
+        if not path:
+            return
+        if Path(path).suffix.lower() not in (".pdf", ".html", ".htm", ".csv"):
+            ext = next((k for k, v in self.REPORT_FILTERS.items() if v == chosen), "pdf")
+            path += f".{ext}"
+        self.settings.setValue("files/export_dir", str(Path(path).parent))
+        self.save_report(path)
+
+    def build_report(self):
+        from datetime import datetime
+
+        pairs = []
+        for a, b in self.comparison_pairs():
+            ia, ib = self.indexer.index_for(self.sessions[a]), self.indexer.index_for(self.sessions[b])
+            pairs.append(PairReport(self.sessions[a].name, self.sessions[b].name, report_entries(ia, ib)))
+        if self.chain_mode:
+            mode = tr("Em cadeia (cada PDF com o anterior)")
+        else:
+            mode = tr("Referência: {name}", name=self.sessions[self.reference_index()].name)
+        created = datetime.now().strftime("%d/%m/%Y %H:%M" if language() == "pt" else "%Y-%m-%d %H:%M")
+        return make_report(created, mode, [s.name for s in self.sessions], pairs)
+
+    def save_report(self, path: str) -> bool:
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            report = self.build_report()
+            write_report(path, report)
+        except (OSError, RuntimeError, ValueError) as exc:
+            QApplication.restoreOverrideCursor()
+            self._notify("warning", tr("Relatório não salvo"), tr("Não foi possível salvar o relatório: {error}",
+                                                                  error=exc))
+            return False
+        QApplication.restoreOverrideCursor()
+        total = sum(len(p.entries) for p in report.pairs)
+        self.statusBar().showMessage(tr("Relatório salvo ({n} mudança(s)): {path}", n=total, path=path), 8000)
+        return True
 
     # --- referência / cadeia ----------------------------------------------------------
     def reference_index(self) -> int:
