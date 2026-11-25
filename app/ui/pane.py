@@ -29,7 +29,10 @@ from app.services import annotations as am
 from app.services.annotations import HIGHLIGHT, Annotation, Color
 from app.services.preferences import DEFAULT_DIFF_COLORS, DEFAULT_STYLE, MarkStyle
 from app.services.search import Hit
+from app.services.strip_layout import StripLayout
+from app.services.strip_layout import _build as rebuild_layout
 from app.services.text_diff import ADDED, CHANGED, REMOVED, DiffMark
+from app.ui.continuous import ContinuousCanvas
 from app.ui.widgets import ElidedLabel
 
 ZoomMode = Union[str, float]
@@ -99,6 +102,10 @@ class PdfPane(QFrame):
     edit_requested = Signal(int, str)                    # (painel, id) — duplo clique
     note_requested = Signal(int, int, float, float)      # (painel, página, x, y)
     annotation_menu = Signal(int, int, float, float, QPoint)  # (painel, página, x, y, posição global)
+    strip_scrolled = Signal(int, float)      # rolagem contínua: (painel, posição em pixels)
+    gap_resized = Signal(int, int, float, float)   # (painel, página, y do espaço, ajuste manual em pontos)
+    point_picked = Signal(int, int, float)   # "Alinhar este trecho com…": (painel, página, y)
+    relayout_requested = Signal(int)         # rolagem contínua: o painel mudou de tamanho
 
     CACHE_SIZE = 4
     MARGIN = 12
@@ -124,6 +131,14 @@ class PdfPane(QFrame):
         self._polygon: List[Tuple[float, float]] = []
         self._scale = 1.0
         self._dpr = 1.0
+        self.continuous = False
+        self.pick_mode = False                 # esperando o clique de "Alinhar este trecho com…"
+        self.last_context_gap = None           # espaço sob o último clique com o botão direito
+        self.gap_drag_line: Optional[float] = None
+        self._gap_drag: Optional[dict] = None
+        self._cdata: dict = {"hits": {}, "diffs": {}, "marks": {}, "hit": None, "diff": None}
+        self._cfocus = None
+        self._max_size: Optional[Tuple[float, float]] = None
 
         self._build_header()
         self._build_view()
@@ -228,6 +243,37 @@ class PdfPane(QFrame):
         self.image.installEventFilter(self)
         self.image.setMouseTracking(True)
         self.rubber = QRubberBand(QRubberBand.Shape.Rectangle, self.image)
+        self.canvas = ContinuousCanvas(self)
+        self.canvas.setParent(self)
+        self.canvas.hide()
+        self.canvas.installEventFilter(self)
+        self.canvas_rubber = QRubberBand(QRubberBand.Shape.Rectangle, self.canvas)
+
+    # --- superfície de desenho (página única ou rolagem contínua) --------------------
+    @property
+    def surface(self) -> QWidget:
+        return self.canvas if self.continuous else self.image
+
+    @property
+    def _rubber(self) -> QRubberBand:
+        return self.canvas_rubber if self.continuous else self.rubber
+
+    def set_view_mode(self, continuous: bool) -> None:
+        if continuous == self.continuous:
+            return
+        self.cancel_drawing()
+        self.continuous = continuous
+        old = self.scroll.takeWidget()
+        old.setParent(self)
+        old.hide()
+        widget = self.canvas if continuous else self.image
+        self.scroll.setWidget(widget)
+        widget.show()
+        self._args = None
+        self._cfocus = None
+        self._shown_page = None
+        self._shown_hit = None
+        self.set_tool(self.tool)
 
     # --- API pública ----------------------------------------------------------
     def render(
@@ -292,8 +338,191 @@ class PdfPane(QFrame):
         finally:
             self._programmatic = False
 
+    # --- rolagem contínua ---------------------------------------------------------
+    def max_page_size(self) -> Tuple[float, float]:
+        if self._max_size is None:
+            doc = self.session.doc
+            w = h = 1.0
+            for p in range(doc.page_count if doc is not None else 0):
+                r = doc[p].rect
+                w, h = max(w, r.width), max(h, r.height)
+            self._max_size = (w, h)
+        return self._max_size
+
+    def page_heights(self) -> List[float]:
+        doc = self.session.doc
+        return [doc[p].rect.height for p in range(doc.page_count)] if doc is not None else []
+
+    def continuous_scale(self, zoom: ZoomMode) -> float:
+        width, height = self.max_page_size()
+        return self._scale_for(fitz.Rect(0, 0, width, height), zoom)
+
+    def render_continuous(self, layout: StripLayout, hits: List[Hit], current_hit: Optional[Hit],
+                          diffs: List[DiffMark], current_diff: Optional[DiffMark],
+                          annotations: List[Annotation]) -> bool:
+        """Mostra o PDF inteiro em rolagem contínua. Devolve True se rolou até uma ocorrência/diferença."""
+        by_page = lambda items: {p: [i for i in items if i.page == p] for p in {i.page for i in items}}  # noqa: E731
+        self._cdata = {"hits": by_page(hits), "diffs": by_page(diffs), "marks": by_page(annotations),
+                       "hit": current_hit, "diff": current_diff}
+        self._annotations = tuple(annotations)
+        self._scale = layout.scale
+        self._dpr = self.devicePixelRatioF() or 1.0
+        self.last_scale = layout.scale
+        self.canvas.layout_strip = layout
+        self.canvas.page_width = self.max_page_size()[0] * layout.scale
+        self.canvas.resize_to_layout(self.scroll.viewport().width())
+        self.canvas.update()
+        self._update_header_continuous()
+        focus = current_hit if current_hit is not None else current_diff
+        if focus is not None and focus != self._cfocus:
+            self._cfocus = focus
+            r = fitz.Rect(focus.rects[0])
+            y = layout.to_strip(focus.page, (r.y0 + r.y1) / 2)
+            self.scroll_to_strip(y - self.scroll.viewport().height() * 0.35)
+            return True
+        self._cfocus = focus
+        return False
+
+    def strip_value(self) -> float:
+        return float(self.scroll.verticalScrollBar().value())
+
+    def scroll_to_strip(self, value: float) -> None:
+        bar = self.scroll.verticalScrollBar()
+        if self.canvas.height() > bar.maximum() + self.scroll.viewport().height():
+            bar.setMaximum(max(self.canvas.height() - self.scroll.viewport().height(), 0))
+        self._programmatic = True
+        try:
+            bar.setValue(round(max(value, 0)))
+        finally:
+            self._programmatic = False
+        self._update_header_continuous()
+
+    def top_page(self) -> Optional[int]:
+        layout = self.canvas.layout_strip
+        if layout is None or not layout.page_top:
+            return None
+        return layout.page_at(self.strip_value() + 4)
+
+    def _update_header_continuous(self) -> None:
+        page = self.top_page()
+        self.page_spin.blockSignals(True)
+        self.page_spin.setValue(page + 1 if page is not None else 0)
+        self.page_spin.blockSignals(False)
+        count = self.session.page_count
+        self.btn_prev.setEnabled(page is not None and page > 0)
+        self.btn_next.setEnabled(page is not None and page < count - 1)
+
+    def continuous_overlay_key(self, page_no: int) -> tuple:
+        d = self._cdata
+        marks = list(d["marks"].get(page_no, []))
+        preview = self._preview if self._preview is not None and self._preview.page == page_no else None
+        hit = d["hit"] if d["hit"] is not None and d["hit"].page == page_no else None
+        diff = d["diff"] if d["diff"] is not None and d["diff"].page == page_no else None
+        return (tuple(d["hits"].get(page_no, [])), hit, tuple(d["diffs"].get(page_no, [])), diff,
+                tuple(repr(a) for a in marks), repr(preview), self.selected_id)
+
+    def page_image_with_overlays(self, page: fitz.Page, page_no: int, scale: float, dpr: float) -> QImage:
+        d = self._cdata
+        image = self._page_image(page, page_no, scale * dpr)
+        marks = list(d["marks"].get(page_no, []))
+        if self._preview is not None and self._preview.page == page_no:
+            marks = [a for a in marks if a.id != self._preview.id] + [self._preview]
+        hits, diffs = d["hits"].get(page_no, []), d["diffs"].get(page_no, [])
+        if not (marks or hits or diffs):
+            return image
+        image = image.copy()
+        if marks:
+            self._paint_annotations(image, page, marks, scale * dpr, dpr, self.selected_id)
+        if diffs:
+            self._paint_diffs(image, page, diffs, d["diff"], scale * dpr, dpr)
+        if hits:
+            self._paint_hits(image, page, hits, d["hit"], scale * dpr, dpr)
+        return image
+
+    def _continuous_point(self, page_no: int, pos: QPoint) -> Optional[Tuple[float, float]]:
+        layout = self.canvas.layout_strip
+        if layout is None:
+            return None
+        pieces = [p for p in layout.pieces if p.page == page_no]
+        if not pieces:
+            return None
+        y_px = pos.y()
+        if y_px <= pieces[0].top:
+            y = pieces[0].y0 + (y_px - pieces[0].top) / layout.scale
+        elif y_px >= pieces[-1].bottom:
+            y = pieces[-1].y1 + (y_px - pieces[-1].bottom) / layout.scale
+        else:
+            y = pieces[-1].y1
+            for piece in pieces:
+                if piece.top <= y_px <= piece.bottom:
+                    y = piece.y0 + (y_px - piece.top) / layout.scale
+                    break
+                if y_px < piece.top:   # dentro de um espaço: borda de cima do pedaço seguinte
+                    y = piece.y0
+                    break
+        x = (pos.x() - self.canvas.page_left(page_no)) / layout.scale
+        point = fitz.Point(x, y) * self.session.doc[page_no].derotation_matrix
+        return point.x, point.y
+
+    def _page_under(self, pos: QPoint) -> Optional[int]:
+        layout = self.canvas.layout_strip
+        return layout.from_strip(pos.y())[0] if layout is not None and layout.page_top else None
+
+    def _canvas_event(self, event: QEvent) -> bool:
+        """Eventos próprios da rolagem contínua; o resto segue para _image_event."""
+        etype = event.type()
+        if etype not in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseMove, QEvent.Type.MouseButtonRelease,
+                         QEvent.Type.MouseButtonDblClick):
+            return False
+        pos = event.position().toPoint()
+        layout = self.canvas.layout_strip
+        if self._gap_drag is not None:
+            if etype == QEvent.Type.MouseMove:
+                g = self._gap_drag
+                g["gap"].manual = g["manual"] + (pos.y() - g["start"])
+                rebuild_layout(layout, [p.gap for p in g["gaps"]])
+                self.canvas.resize_to_layout(self.scroll.viewport().width())
+                self.canvas.update()
+                return True
+            if etype == QEvent.Type.MouseButtonRelease:
+                g, self._gap_drag = self._gap_drag, None
+                gap = g["gap"]
+                self.gap_resized.emit(self.index, gap.page, gap.y, gap.manual / max(layout.scale, 1e-6))
+                return True
+        if etype == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            if self.pick_mode:
+                page = self._page_under(pos)
+                point = self._continuous_point(page, pos) if page is not None else None
+                if point is not None:
+                    self.point_picked.emit(self.index, page, point[1])
+                return True
+            handle = self.canvas.gap_handle_at(pos.y()) if self.tool == TOOL_NONE else None
+            if handle is not None:
+                gaps = layout.gaps()
+                self._gap_drag = {"gap": handle.gap, "manual": handle.gap.manual, "start": pos.y(), "gaps": gaps}
+                return True
+        if etype == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.RightButton:
+            gap = self.canvas.gap_at(pos.y())
+            self.last_context_gap = gap.gap if gap is not None else None
+        busy = self._gesture is not None or self._polygon or self._drag_start is not None
+        if not busy and etype in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick, QEvent.Type.MouseMove):
+            page = self._page_under(pos)
+            if page is not None:
+                self._shown_page = page
+            if etype == QEvent.Type.MouseMove and self.tool == TOOL_NONE:
+                over = self.canvas.gap_handle_at(pos.y()) is not None
+                if over:
+                    self.canvas.setCursor(Qt.CursorShape.SizeVerCursor)
+                    return True
+        return False
+
     # --- renderização ---------------------------------------------------------
     def _render_now(self) -> None:
+        if self.continuous:
+            if self._resize_timer.isActive() or self.sender() is self._resize_timer:
+                self.relayout_requested.emit(self.index)
+            self.canvas.update()
+            return
         if self._args is None or self.session.doc is None:
             return
         page_no, raw, page_hits, current, zoom, page_diffs, current_diff, _ = self._args
@@ -583,6 +812,8 @@ class PdfPane(QFrame):
         """Converte um ponto da imagem (pixels) para coordenadas da página sem rotação."""
         if self._shown_page is None or self.session.doc is None:
             return None
+        if self.continuous:
+            return self._continuous_point(self._shown_page, pos)
         pix = self.image.pixmap()
         if pix is None or pix.isNull():
             return None
@@ -677,8 +908,8 @@ class PdfPane(QFrame):
                 return True
             if tool in am.TEXT_MARKUPS:
                 self._drag_start = pos
-                self.rubber.setGeometry(QRect(pos, QSize()))
-                self.rubber.show()
+                self._rubber.setGeometry(QRect(pos, QSize()))
+                self._rubber.show()
                 return True
             if point is None:
                 return tool != TOOL_NONE
@@ -695,7 +926,7 @@ class PdfPane(QFrame):
         if etype == QEvent.Type.MouseMove:
             pos = event.position().toPoint()
             if self._drag_start is not None:
-                self.rubber.setGeometry(QRect(self._drag_start, pos).normalized())
+                self._rubber.setGeometry(QRect(self._drag_start, pos).normalized())
                 return True
             point = self.to_page_point(pos)
             if self._gesture is not None and point is not None:
@@ -704,10 +935,10 @@ class PdfPane(QFrame):
             if self.tool == am.POLYGON and self._polygon and point is not None:
                 self._show_preview(self._polygon_mark(point))
                 return True
-            self.image.setToolTip(self.annotation_tooltip(*point) if point is not None else "")
+            self.surface.setToolTip(self.annotation_tooltip(*point) if point is not None else "")
             if self.tool == TOOL_NONE and point is not None:
                 over_handle = self._handle_at(*point) is not None
-                self.image.setCursor(Qt.CursorShape.SizeFDiagCursor if over_handle else Qt.CursorShape.ArrowCursor)
+                self.surface.setCursor(Qt.CursorShape.SizeFDiagCursor if over_handle else Qt.CursorShape.ArrowCursor)
             return False
         if etype == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
             if self._drag_start is not None:
@@ -807,7 +1038,7 @@ class PdfPane(QFrame):
         self._polygon = []
         self._gesture = None
         self._drag_start = None
-        self.rubber.hide()
+        self._rubber.hide()
         if self._preview is not None:
             self._preview = None
             self._render_now()
@@ -815,7 +1046,7 @@ class PdfPane(QFrame):
 
     def finish_highlight(self, start: QPoint, end: QPoint) -> None:
         self._drag_start = None
-        self.rubber.hide()
+        self._rubber.hide()
         a = self.to_page_point(start)
         b = self.to_page_point(end)
         if a is None or b is None or self._shown_page is None:
@@ -835,7 +1066,7 @@ class PdfPane(QFrame):
             cursor = Qt.CursorShape.IBeamCursor
         elif tool != TOOL_NONE:
             cursor = Qt.CursorShape.CrossCursor
-        self.image.setCursor(cursor)
+        self.surface.setCursor(cursor)
 
     def _position_view(self, target: Optional[Tuple[float, float]]) -> None:
         self._programmatic = True
@@ -855,13 +1086,20 @@ class PdfPane(QFrame):
             self.page_jump.emit(self.index, value - 1)
 
     def _on_scroll(self, value: int) -> None:
+        if self.continuous:
+            self._update_header_continuous()
+            if not self._programmatic:
+                self.strip_scrolled.emit(self.index, float(value))
+            return
         if self._programmatic:
             return
         maximum = self.scroll.verticalScrollBar().maximum()
         self.scrolled.emit(self.index, value / maximum if maximum else 0.0)
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802
-        if obj is self.image and self._image_event(event):
+        if self.continuous and obj is self.canvas and self._canvas_event(event):
+            return True
+        if obj is self.surface and self._image_event(event):
             return True
         if (
             obj is self.scroll.viewport()
@@ -874,5 +1112,8 @@ class PdfPane(QFrame):
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
+        if self.continuous:
+            self._resize_timer.start()
+            return
         if self._args is not None and (isinstance(self._args[4], str) or self._args[0] is None):
             self._resize_timer.start()

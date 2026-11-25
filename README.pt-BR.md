@@ -42,6 +42,11 @@ Na primeira execução o Windows SmartScreen pode avisar que o programa não é 
 | Ir à próxima ocorrência em **um** PDF | **▲ ▼** na etiqueta amarela do painel |
 | Ver todas as ocorrências em lista | **Lista de ocorrências** (Ctrl+Shift+F): trecho e página de cada uma; clique para ir até ela |
 | Ver as diferenças de texto | **Comparar texto** (Ctrl+D). F7 / Shift+F7 vão para a próxima / anterior diferença |
+| Escolher o PDF de referência | Botão direito em um PDF › **Usar como referência da comparação**, ou **Ferramentas › Referência da comparação** |
+| Comparar cada versão com a anterior | **Ferramentas › Referência da comparação › Em cadeia** (v1→v2→v3) |
+| Alinhar páginas pelo conteúdo | **Alinhar por conteúdo** (Ctrl+Shift+L): páginas incluídas ou removidas aparecem com o painel vazio ao lado. ◀ ▶ de um painel escolhem qual página fica ao lado da referência; **Realinhar** desfaz |
+| Ver todas as páginas em sequência | **Rolagem contínua** (Ctrl+Shift+C) |
+| Ajustar o alinhamento na rolagem contínua | Arraste a alça embaixo de um espaço; botão direito › **Inserir espaço aqui**, **Remover este espaço** ou **Alinhar este trecho com…** (e clique no trecho correspondente em outro PDF) |
 | Comparar PDFs grandes por partes | A comparação é feita em lotes de páginas (padrão: 50). **Comparar próximo lote ▶** (F8) na barra de status; Shift+F8 volta |
 | Destacar, sublinhar ou tachar um trecho | Escolha a ferramenta na **barra de marcação** (Destacar: Ctrl+H) e arraste sobre o texto |
 | Desenhar retângulo, elipse, linha, seta ou à mão livre | Escolha a ferramenta e arraste na página |
@@ -82,6 +87,24 @@ palavra por palavra. Cores: **verde** = incluído, **vermelho** (tachado) = remo
 página não aparece como diferença) e a pontuação nas bordas das palavras; maiúsculas e acentos
 contam. A barra de status mostra o total por PDF. As cores podem ser trocadas em
 **Editar › Configurações… › Comparação**.
+
+**Referência e cadeia.** Por padrão, cada PDF é comparado com o 1º. Dá para escolher outro PDF
+como referência (etiqueta **Referência** no cabeçalho) ou comparar **em cadeia**: o 2º com o 1º,
+o 3º com o 2º, e assim por diante.
+
+**Alinhamento por conteúdo.** As linhas de texto dos PDFs são comparadas em ordem e cada página
+fica ao lado da página da referência com que mais compartilha linhas. Páginas que existem só em um
+PDF aparecem com o painel vazio nos outros, com uma explicação. Páginas muito alteradas ou sem texto
+são pareadas pela semelhança e pela ordem. Os ajustes manuais (◀ ▶ do painel, página digitada,
+espaços e trechos) ficam salvos para aqueles PDFs (pelo conteúdo) e voltam ao abri-los de novo;
+**Realinhar** desfaz todos.
+
+**Rolagem contínua.** Mostra as páginas uma embaixo da outra (**Exibir › Rolagem contínua**). Com o
+alinhamento por conteúdo ligado, entram **espaços de alinhamento** do tamanho do conteúdo incluído
+ou removido, no lugar onde ele estaria, para que os trechos iguais fiquem na mesma altura em todos os
+PDFs. Quando as páginas quebram em pontos diferentes, também entram espaços nas quebras. Quando o
+alinhamento automático erra (ex.: PDFs escaneados), arraste a alça de um espaço, insira ou remova um
+espaço, ou use **Alinhar este trecho com…**; um espaço ajustado à mão vale até o próximo trecho igual.
 
 **Comparação em lotes.** Em PDFs grandes a comparação é dividida em lotes de páginas do 1º PDF
 (os outros acompanham o alinhamento de cada painel). A barra de status mostra "Lote 2 de 8 ·
@@ -200,6 +223,8 @@ app/
   services/text_diff.py    comparação de texto palavra por palavra
   services/diff_batches.py lotes de páginas e cache das comparações em disco
   services/batch_runner.py execução dos lotes em segundo plano
+  services/content_align.py alinhamento por conteúdo (páginas e linhas iguais) e ajustes manuais
+  services/strip_layout.py disposição da rolagem contínua com os espaços de alinhamento
   services/annotations.py  marcações (destaques, formas, textos, carimbos, notas) fora do PDF; PDF anotado
   services/preferences.py  cores da comparação e estilo padrão das marcações
   services/export.py       exportação lado a lado e das páginas atuais (PDF/PNG)
@@ -208,6 +233,7 @@ app/
   i18n.py                  idioma da interface (tr); i18n_en.py tem as traduções para o inglês
   ui/main_window.py        janela, menus, barras, grade, arrastar e soltar
   ui/pane.py               painel de um PDF (renderização, destaques, controles)
+  ui/continuous.py         desenho da rolagem contínua (páginas cortadas nos espaços)
   ui/search_bar.py         barra de pesquisa
   ui/results_panel.py      lista de ocorrências (trecho + página)
   ui/marks_panel.py        lista de marcações com filtros

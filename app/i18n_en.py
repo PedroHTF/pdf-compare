@@ -667,4 +667,40 @@ EN = {
         'Aligned by content: {extra} position(s) with added pages and {missing} with removed pages relative to {name}.',
     'Página {page} de {name} fixada ao lado da página {ref} de {ref_name}. Realinhar desfaz.':
         'Page {page} of {name} pinned next to page {ref} of {ref_name}. Realign undoes it.',
+    '(ajustado)':
+        '(adjusted)',
+    'espaço de alinhamento · {pt} pt':
+        'alignment space · {pt} pt',
+    'Rolagem &contínua':
+        '&Continuous scrolling',
+    'Mostrar todas as páginas em sequência, em vez de uma de cada vez':
+        'Show all pages in sequence instead of one at a time',
+    'Contínua':
+        'Continuous',
+    'Inserir espaço aqui':
+        'Insert space here',
+    'Remover este espaço':
+        'Remove this space',
+    'Alinhar este trecho com…':
+        'Align this passage with…',
+    'Depois, clique no trecho correspondente em outro PDF':
+        'Then click the matching passage in another PDF',
+    'Alinhamento de trecho cancelado.':
+        'Passage alignment canceled.',
+    'Espaço ajustado. Realinhar desfaz os ajustes manuais.':
+        'Space adjusted. Realign undoes manual adjustments.',
+    'Espaço inserido. Arraste a alça embaixo dele para ajustar a altura.':
+        'Space inserted. Drag the handle below it to adjust the height.',
+    'Espaço removido. Realinhar desfaz os ajustes manuais.':
+        'Space removed. Realign undoes manual adjustments.',
+    'Agora clique no trecho correspondente em outro PDF (Esc cancela).':
+        'Now click the matching passage in another PDF (Esc cancels).',
+    'Trechos alinhados. Realinhar desfaz os ajustes manuais.':
+        'Passages aligned. Realign undoes manual adjustments.',
+    'Role qualquer PDF: os outros acompanham  ·  botão direito: inserir espaço ou alinhar um trecho  ·  arraste a alça de um espaço para ajustar':
+        'Scroll any PDF: the others follow  ·  right-click: insert space or align a passage  ·  drag a space handle to adjust',
+    '◀ ▶ ou setas do teclado: avançam todos juntos  ·  ◀ ▶ de um painel: escolhem qual página dele fica ao lado da referência':
+        '◀ ▶ or arrow keys: move all together  ·  a pane’s ◀ ▶: choose which of its pages sits next to the reference',
+    'Rolagem contínua':
+        'Continuous scrolling',
 }

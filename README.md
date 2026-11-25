@@ -45,6 +45,11 @@ language (Portuguese if Windows is in Portuguese, English otherwise). To switch,
 | Go to the next match in **one** PDF | **▲ ▼** on the pane's yellow label |
 | See all matches in a list | **Match list** (Ctrl+Shift+F): snippet and page of each one; click to go there |
 | See text differences | **Compare text** (Ctrl+D). F7 / Shift+F7 go to the next / previous difference |
+| Choose the reference PDF | Right-click a PDF › **Use as comparison reference**, or **Tools › Comparison reference** |
+| Compare each version with the previous one | **Tools › Comparison reference › In a chain** (v1→v2→v3) |
+| Align pages by content | **Align by content** (Ctrl+Shift+L): added or removed pages appear with an empty pane next to them. A pane’s ◀ ▶ choose which page sits next to the reference; **Realign** undoes it |
+| See all pages in sequence | **Continuous scrolling** (Ctrl+Shift+C) |
+| Adjust the alignment in continuous scrolling | Drag the handle below a space; right-click › **Insert space here**, **Remove this space** or **Align this passage with…** (then click the matching passage in another PDF) |
 | Compare large PDFs in parts | Comparison runs in batches of pages (default: 50). **Compare next batch ▶** (F8) on the status bar; Shift+F8 goes back |
 | Highlight, underline or strike out text | Pick the tool on the **markup toolbar** (Highlight: Ctrl+H) and drag over the text |
 | Draw a rectangle, ellipse, line, arrow or freehand | Pick the tool and drag on the page |
@@ -78,6 +83,23 @@ word by word. Default colors: **green** = added, **red** (struck through) = remo
 **blue** = changed. The comparison ignores line and page breaks (text that only moved to another
 page is not a difference) and punctuation at the edges of words; case and accents count. The
 status bar shows the total per PDF. Colors can be changed in **Edit › Settings… › Comparison**.
+
+**Reference and chain.** By default each PDF is compared with the first one. You can choose another
+PDF as the reference (a **Reference** badge in its header) or compare **in a chain**: the 2nd with
+the 1st, the 3rd with the 2nd, and so on.
+
+**Align by content.** The PDFs' text lines are compared in order and each page sits next to the
+reference page it shares the most lines with. Pages that exist in only one PDF appear with an empty
+pane, with an explanation, in the others. Heavily changed or text-less pages are paired by similarity
+and order. Manual adjustments (pane ◀ ▶, typed page, spaces and passages) are saved for those PDFs
+(by content) and come back when they are opened again; **Realign** undoes them all.
+
+**Continuous scrolling.** Shows pages one below the other (**View › Continuous scrolling**). With
+content alignment on, **alignment spaces** the size of the added or removed content are inserted
+where it would be, so matching passages sit at the same height in every PDF. When pages break at
+different points, spaces are also inserted at the breaks. When the automatic alignment gets it wrong
+(e.g. scanned PDFs), drag a space's handle, insert or remove a space, or use **Align this passage
+with…**; a manually adjusted space lasts until the next matching passage.
 
 **Batch comparison.** With large PDFs the comparison is split into batches of pages of the first
 PDF (the others follow each pane's alignment). The status bar shows "Batch 2 of 8 · pages 51–100",
@@ -196,6 +218,8 @@ app/
   services/text_diff.py    word-by-word text comparison
   services/diff_batches.py page batches and on-disk cache of comparisons
   services/batch_runner.py runs batches in the background
+  services/content_align.py content alignment (matching pages and lines) and manual adjustments
+  services/strip_layout.py continuous-scrolling layout with alignment spaces
   services/annotations.py  marks (highlights, shapes, text, stamps, notes) kept outside the PDF; annotated PDF
   services/preferences.py  comparison colors and default mark style
   services/export.py       side-by-side and current-page export (PDF/PNG)
@@ -204,6 +228,7 @@ app/
   i18n.py                  UI language (tr); i18n_en.py has the English translations
   ui/main_window.py        window, menus, toolbars, grid, drag and drop
   ui/pane.py               one PDF's pane (rendering, marks, controls)
+  ui/continuous.py         continuous-scrolling canvas (pages cut at the spaces)
   ui/search_bar.py         search bar
   ui/results_panel.py      match list (snippet + page)
   ui/marks_panel.py        marks list with filters

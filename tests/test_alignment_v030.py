@@ -251,3 +251,138 @@ def test_content_alignment_follows_reference(versions, qtbot):
     assert w.runner.pairs == [] or w.runner.pairs == [(1, 0)]
     w.panes[0].page_jump.emit(0, 3)                    # página digitada no painel, alinhado: fixa o par
     assert w.nav.page_for(0) == 3
+
+
+# --- rolagem contínua ---------------------------------------------------------------------------------
+def _contract(path, extra=False, drop=False):
+    import fitz
+
+    lines = []
+    for k in range(1, 31):
+        if drop and k == 11:
+            continue
+        lines += [f"Clausula {k}. O contratante se obriga a cumprir o item {k}",
+                  f"conforme o anexo {k} e as condicoes gerais numero {k * 3}.", ""]
+        if extra and k == 3:
+            lines += ["Paragrafo NOVO incluido na versao 2 sobre multas e prazos",
+                      "adicionais que nao existiam na versao anterior do contrato.", ""]
+    doc = fitz.open()
+    page, y = doc.new_page(), 60
+    for line in lines:
+        if y > 780:
+            page, y = doc.new_page(), 60
+        page.insert_text((60, y), line, fontsize=11)
+        y += 16
+    doc.save(str(path))
+    return path
+
+
+@pytest.fixture
+def contracts(window, tmp_path, qtbot):
+    a = _contract(tmp_path / "c1.pdf")
+    b = _contract(tmp_path / "c2.pdf", extra=True, drop=True)
+    window.resize(1200, 800)
+    window.add_files([a, b])
+    qtbot.waitUntil(lambda: not window.indexer.busy, timeout=10000)
+    window.act_content_align.trigger()
+    window.act_continuous.trigger()
+    return window
+
+
+def test_continuous_aligned_layout_opens_spaces_where_content_differs(contracts):
+    w = contracts
+    assert all(p.continuous and p.scroll.widget() is p.canvas for p in w.panes)
+    one, two = w._layouts
+    [gap_one] = one.gaps()
+    [gap_two] = two.gaps()
+    assert gap_one.gap.page == 0 and 180 < gap_one.gap.y < 200      # antes da cláusula 4 (parágrafo novo na v2)
+    assert gap_two.gap.page == 0 and 560 < gap_two.gap.y < 600      # antes da cláusula 12 (cláusula 11 removida)
+    # a cláusula 12 fica na mesma altura nos dois
+    def clause_top(doc, number):
+        index = w.indexer.index_for(w.sessions[doc])
+        for page, tokens in enumerate(index.pages):
+            for t, nxt in zip(tokens, tokens[1:]):
+                if t.text == "Clausula" and nxt.text == str(number):
+                    return page, t.rects[0][1]
+        raise AssertionError(number)
+
+    for number in (12, 20, 28):   # inclusive na 2ª página (as páginas quebram em pontos diferentes)
+        assert one.to_strip(*clause_top(0, number)) == pytest.approx(two.to_strip(*clause_top(1, number)), abs=4)
+
+
+def test_continuous_linked_scroll_and_navigation(contracts):
+    w = contracts
+    w.panes[0].scroll.verticalScrollBar().setValue(300)       # o usuário rola o 1º PDF
+    assert w.panes[1].strip_value() == 300 and w.nav.page_for(0) == 0
+    w.panes[0].scroll.verticalScrollBar().setValue(0)
+    w.go_last()                                                 # navegação pela barra rola os dois
+    assert w.panes[0].strip_value() == w.panes[1].strip_value()
+    w.act_continuous.trigger()                                  # volta a uma página por vez
+    assert all(not p.continuous and p.scroll.widget() is p.image for p in w.panes)
+    assert w.nav.page_for(0) is not None
+
+
+def test_gap_handle_insert_remove_and_realign(contracts, qtbot):
+    w = contracts
+    one = w._layouts[0]
+    [piece] = one.gaps()
+    before = piece.height
+    w.panes[0].gap_resized.emit(0, piece.gap.page, piece.gap.y, 20.0)   # arrastou a alça +20 pt
+    [piece] = w._layouts[0].gaps()
+    assert piece.height == pytest.approx(before + 20 * w._layouts[0].scale)
+    assert w.act_realign.isEnabled()
+
+    w.insert_gap(1, 0, 100.0)
+    assert any(abs(g.gap.y - 100) < 1 for g in w._layouts[1].gaps())
+    w.remove_gap(1, next(g.gap for g in w._layouts[1].gaps() if abs(g.gap.y - 100) < 1))
+    assert all(g.height < 1 for g in w._layouts[1].gaps() if abs(g.gap.y - 100) < 1)
+
+    w.realign()
+    [piece] = w._layouts[0].gaps()
+    assert piece.height == pytest.approx(before) and not w.act_realign.isEnabled()
+
+
+def test_align_passage_with_another_pdf(contracts):
+    w = contracts
+    w.start_pick(0, 0, 400.0)
+    assert w.panes[1].pick_mode and not w.panes[0].pick_mode
+    w.panes[1].point_picked.emit(1, 0, 300.0)                   # "este trecho" da v1 = esse da v2
+    assert not w.panes[1].pick_mode
+    one, two = w._layouts
+    assert one.to_strip(0, 400) == pytest.approx(two.to_strip(0, 300), abs=2)
+
+    w.start_pick(1, 0, 100.0)
+    w.escape()                                                  # Esc cancela
+    assert w._pick is None and not w.panes[0].pick_mode
+
+
+def test_draw_mark_in_continuous_mode(contracts, qtbot):
+    from PySide6.QtCore import QPoint, Qt
+
+    from app.services import annotations as am
+
+    w = contracts
+    pane = w.panes[1]
+    layout = w._layouts[1]
+
+    def at(page, x, y):
+        return QPoint(round(pane.canvas.page_left(page) + x * layout.scale), round(layout.to_strip(page, y)))
+
+    w.set_tool(am.RECT)
+    qtbot.mousePress(pane.canvas, Qt.MouseButton.LeftButton, pos=at(1, 100, 100))
+    qtbot.mouseMove(pane.canvas, at(1, 200, 160))
+    qtbot.mouseRelease(pane.canvas, Qt.MouseButton.LeftButton, pos=at(1, 200, 160))
+    [mark] = w.document_annotations(1)
+    assert mark.page == 1 and mark.rects[0] == pytest.approx((100, 100, 200, 160), abs=1.5)
+
+
+def test_continuous_without_content_alignment_scrolls_by_page(window, tmp_path, qtbot):
+    w = window
+    a = _contract(tmp_path / "c1.pdf")
+    b = _contract(tmp_path / "c2.pdf", extra=True)
+    w.add_files([a, b])
+    w.act_continuous.trigger()
+    one, two = w._layouts
+    assert one.gaps() == [] and two.gaps() == []
+    w.panes[0].scroll.verticalScrollBar().setValue(round(one.page_top[1]))
+    assert w.panes[1].top_page() == 1 and w.nav.page_for(0) == 1

@@ -33,25 +33,32 @@ class Line:
     page: int
     y: float       # topo da linha (pontos, página sem rotação)
     key: str
+    bottom: float = 0.0
+    cut: float = 0.0   # onde um espaço pode entrar acima desta linha sem cortar a anterior
 
 
 def document_lines(index: DocumentIndex) -> List[Line]:
     lines: List[Line] = []
     for page_no, tokens in enumerate(index.pages):
+        groups: List[Tuple[List[str], float, float]] = []
         current: Optional[int] = None
-        words: List[str] = []
-        top = 0.0
         for token in tokens:
-            if token.line != current:
-                if words:
-                    lines.append(Line(page_no, top, " ".join(words)))
-                current, words = token.line, []
-                top = min(r[1] for r in token.rects) if token.rects else 0.0
+            top = min((r[1] for r in token.rects), default=0.0)
+            bottom = max((r[3] for r in token.rects), default=top)
+            if token.line != current or not groups:
+                groups.append(([], top, bottom))
+                current = token.line
+            words, t, b = groups[-1]
             words.append(fold(token.text, False, True))
-            if token.rects:
-                top = min(top, min(r[1] for r in token.rects))
-        if words:
-            lines.append(Line(page_no, top, " ".join(words)))
+            groups[-1] = (words, min(t, top), max(b, bottom))
+        previous_bottom: Optional[float] = None
+        for words, top, bottom in groups:
+            if previous_bottom is not None and previous_bottom <= top:
+                cut = (previous_bottom + top) / 2        # no meio do espaço entre as linhas
+            else:
+                cut = max(top - 2.0, 0.0)
+            lines.append(Line(page_no, top, " ".join(words), bottom, cut))
+            previous_bottom = bottom if previous_bottom is None else max(previous_bottom, bottom)
     return lines
 
 
@@ -83,7 +90,9 @@ def match_lines(a: DocumentIndex, b: DocumentIndex) -> PairMatch:
     for i, j, size in matcher.get_matching_blocks():
         for k in range(size):
             x, y = la[i + k], lb[j + k]
-            anchors.append((x.page, x.y, y.page, y.y))
+            # âncoras: início de cada trecho igual e primeira linha de cada página dentro dele
+            if k == 0 or x.page != la[i + k - 1].page or y.page != lb[j + k - 1].page:
+                anchors.append((x.page, x.cut, y.page, y.cut))
             votes[(x.page, y.page)] = votes.get((x.page, y.page), 0) + 1
     return PairMatch(a.page_count, b.page_count, anchors, votes,
                      _page_words(la, a.page_count), _page_words(lb, b.page_count))
@@ -248,6 +257,19 @@ def build_rows(page_counts: Sequence[int], primary: int, pairs: Dict[int, Sequen
                 row[d] = matched[d].get(r)
             rows.append(tuple(row))
     return rows
+
+
+def combined_anchors(match: PairMatch, manual: Sequence[Anchor] = ()) -> List[Anchor]:
+    """Âncoras automáticas mais as definidas pelo usuário ("Alinhar este trecho com…").
+
+    As automáticas que ficariam fora de ordem em relação a uma manual são descartadas.
+    """
+    keep = []
+    for anchor in match.anchors:
+        a, b = (anchor[0], anchor[1]), (anchor[2], anchor[3])
+        if all(((m[0], m[1]) < a) == ((m[2], m[3]) < b) and (m[0], m[1]) != a for m in manual):
+            keep.append(anchor)
+    return sorted(keep + list(manual))
 
 
 def rows_key(rows: Sequence[Row]) -> str:
