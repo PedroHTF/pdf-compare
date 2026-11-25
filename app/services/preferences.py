@@ -51,6 +51,8 @@ DEFAULT_STYLE = MarkStyle()
 NEXT_ON_CLICK = "click"     # o próximo lote só é comparado quando o usuário pede
 NEXT_AUTO = "auto"          # os próximos lotes são comparados em segundo plano
 LOOKAHEAD_ALL = 0
+REALIGN_ON_CLICK = "click"   # alinhamento mudou: mostra "Recomparar" e espera o clique
+REALIGN_AUTO = "auto"        # alinhamento mudou: recompara sozinho (depois de uma pausa)
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,7 @@ class CompareSettings:
     lookahead: int = 1                      # lotes adiantados no modo automático; 0 = todos
     pause_while_busy: bool = True           # segundo plano espera o usuário parar de rolar/anotar
     cache_days: int = DEFAULT_RETENTION_DAYS    # 0 = nunca apagar
+    realign_mode: str = REALIGN_ON_CLICK
 
 
 DEFAULT_COMPARE = CompareSettings()
@@ -95,7 +98,9 @@ class Preferences:
         pause = self.settings.value("compare/pause_while_busy", d.pause_while_busy)
         if isinstance(pause, str):
             pause = pause.lower() in ("true", "1", "yes")
+        realign = str(self.settings.value("compare/realign_mode", d.realign_mode))
         return CompareSettings(
+            realign_mode=realign if realign in (REALIGN_ON_CLICK, REALIGN_AUTO) else d.realign_mode,
             batch_size=self._int("compare/batch_size", d.batch_size, 0, 100000),
             next_mode=mode if mode in (NEXT_ON_CLICK, NEXT_AUTO) else d.next_mode,
             lookahead=self._int("compare/lookahead", d.lookahead, 0, 1000),
@@ -109,6 +114,7 @@ class Preferences:
         self.settings.setValue("compare/lookahead", c.lookahead)
         self.settings.setValue("compare/pause_while_busy", c.pause_while_busy)
         self.settings.setValue("compare/cache_days", c.cache_days)
+        self.settings.setValue("compare/realign_mode", c.realign_mode)
 
     # --- estilo das marcações -------------------------------------------------------
     def _float(self, key: str, default: float, low: float, high: float) -> float:

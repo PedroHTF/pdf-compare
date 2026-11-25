@@ -602,4 +602,20 @@ EN = {
         '{done} of {total} batches compared',
     'Próximo lote ▶':
         'Next batch ▶',
+    'Recomparar':
+        'Recompare',
+    'Refazer a comparação em lotes com o alinhamento atual dos PDFs':
+        'Redo the batch comparison with the current alignment of the PDFs',
+    'Mostrar “Recomparar” e esperar o meu clique':
+        'Show “Recompare” and wait for my click',
+    'Recomparar automaticamente':
+        'Recompare automatically',
+    'O que fazer quando você ajusta o alinhamento de um PDF (◀ ▶ do painel, página digitada ou Realinhar)':
+        'What to do when you adjust a PDF’s alignment (pane ◀ ▶, typed page or Realign)',
+    'Quando o alinhamento mudar':
+        'When the alignment changes',
+    'O alinhamento mudou. Clique em “Recomparar” para refazer os lotes com o novo alinhamento.':
+        'The alignment changed. Click “Recompare” to redo the batches with the new alignment.',
+    'alinhamento mudou':
+        'alignment changed',
 }

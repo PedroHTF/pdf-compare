@@ -31,6 +31,8 @@ from app.services.preferences import (
     LOOKAHEAD_ALL,
     NEXT_AUTO,
     NEXT_ON_CLICK,
+    REALIGN_AUTO,
+    REALIGN_ON_CLICK,
     CompareSettings,
     MarkStyle,
 )
@@ -121,6 +123,13 @@ class SettingsDialog(QDialog):
         self.pause_check = QCheckBox(tr("Pausar enquanto eu rolo as páginas ou faço marcações"))
         self.pause_check.setChecked(c.pause_while_busy)
         form.addRow("", self.pause_check)
+        self.realign_combo = QComboBox()
+        self.realign_combo.addItem(tr("Mostrar “Recomparar” e esperar o meu clique"), REALIGN_ON_CLICK)
+        self.realign_combo.addItem(tr("Recomparar automaticamente"), REALIGN_AUTO)
+        self.realign_combo.setCurrentIndex(max(self.realign_combo.findData(c.realign_mode), 0))
+        self.realign_combo.setToolTip(tr("O que fazer quando você ajusta o alinhamento de um PDF "
+                                         "(◀ ▶ do painel, página digitada ou Realinhar)"))
+        form.addRow(tr("Quando o alinhamento mudar"), self.realign_combo)
         self.next_combo.currentIndexChanged.connect(self._sync_compare_widgets)
         self.batch_spin.valueChanged.connect(self._sync_compare_widgets)
         layout.addWidget(batches)
@@ -167,6 +176,7 @@ class SettingsDialog(QDialog):
         batched = self.batch_spin.value() > 0
         auto = self.next_combo.currentData() == NEXT_AUTO
         self.next_combo.setEnabled(batched)
+        self.realign_combo.setEnabled(batched)
         self.lookahead_combo.setEnabled(batched and auto)
         self.pause_check.setEnabled(batched and auto)
 
@@ -233,6 +243,6 @@ class SettingsDialog(QDialog):
             compare=CompareSettings(
                 batch_size=self.batch_spin.value(), next_mode=self.next_combo.currentData(),
                 lookahead=self.lookahead_combo.currentData(), pause_while_busy=self.pause_check.isChecked(),
-                cache_days=self.cache_days_spin.value(),
+                cache_days=self.cache_days_spin.value(), realign_mode=self.realign_combo.currentData(),
             ),
         )

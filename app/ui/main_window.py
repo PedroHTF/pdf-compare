@@ -9,7 +9,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from PySide6.QtCore import QByteArray, QMimeData, QPoint, QSettings, QSize, QStandardPaths, Qt
+from PySide6.QtCore import QByteArray, QMimeData, QPoint, QSettings, QSize, QStandardPaths, Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -52,7 +52,15 @@ from app.services.annotations import (
 )
 from app.services.batch_runner import BatchRunner
 from app.services.diff_batches import ALL_PAGES, DiffCache, batch_for_page, format_size
-from app.services.preferences import NEXT_AUTO, LOOKAHEAD_ALL, CompareSettings, MarkStyle, Preferences, to_hex
+from app.services.preferences import (
+    LOOKAHEAD_ALL,
+    NEXT_AUTO,
+    REALIGN_AUTO,
+    CompareSettings,
+    MarkStyle,
+    Preferences,
+    to_hex,
+)
 from app.services.export import Column, ExportError, export_comparison, export_current_pages, safe_stem
 from app.services.indexer import IndexScheduler
 from app.services.navigation import NavigationController
@@ -164,7 +172,13 @@ class MainWindow(QMainWindow):
         self._batch_signature: Optional[tuple] = None
         self._current_batch = 0
         self._jump_to_first_diff = False
-        self._alignment_changed = False   # o usuário ajustou o alinhamento de um painel
+        self._alignment_touched = False   # o usuário acabou de ajustar o alinhamento de um painel
+        self._adopt_offsets = False       # o próximo plano usa o alinhamento atual
+        self._realign_pending = False     # alinhamento mudou e o usuário ainda não pediu "Recomparar"
+        self._realign_timer = QTimer(self)
+        self._realign_timer.setSingleShot(True)
+        self._realign_timer.setInterval(self.REALIGN_DELAY_MS)
+        self._realign_timer.timeout.connect(self._alignment_settled)
         self.sessions: List[DocumentSession] = []
         self.panes: List[PdfPane] = []
         self.nav = NavigationController()
@@ -263,6 +277,8 @@ class MainWindow(QMainWindow):
                                           tr("Ir para a diferença de texto anterior em cada PDF"))
         self.act_batch_next = self._action(tr("Comparar próximo lote"), self.compare_next_batch, ["F8"],
                                            tr("Comparar o próximo lote de páginas e ir até ele"))
+        self.act_recompare = self._action(tr("Recomparar"), self.recompare, [],
+                                          tr("Refazer a comparação em lotes com o alinhamento atual dos PDFs"))
         self.act_batch_prev = self._action(tr("Lote anterior"), self.go_previous_batch, ["Shift+F8"],
                                            tr("Voltar ao lote de páginas anterior"))
 
@@ -359,7 +375,7 @@ class MainWindow(QMainWindow):
         m.addActions([self.act_find, self.act_hit_next, self.act_hit_prev])
         m.addSeparator()
         m.addActions([self.act_diff_next, self.act_diff_prev])
-        m.addActions([self.act_batch_next, self.act_batch_prev])
+        m.addActions([self.act_batch_next, self.act_batch_prev, self.act_recompare])
 
         m = bar.addMenu(tr("&Exibir"))
         m.addActions([self.act_fit_width, self.act_fit_page, self.act_zoom_in, self.act_zoom_out])
@@ -563,6 +579,10 @@ class MainWindow(QMainWindow):
         self.batch_next_btn = QToolButton()
         self.batch_next_btn.clicked.connect(self.act_batch_next.trigger)
         self.batch_next_btn.setToolTip(self.act_batch_next.toolTip())
+        self.recompare_btn = QToolButton()
+        self.recompare_btn.setText(tr("Recomparar"))
+        self.recompare_btn.setToolTip(self.act_recompare.toolTip())
+        self.recompare_btn.clicked.connect(self.act_recompare.trigger)
         self.batch_progress = QProgressBar()
         self.batch_progress.setMaximumWidth(120)
         self.batch_progress.setTextVisible(False)
@@ -570,7 +590,7 @@ class MainWindow(QMainWindow):
         self.batch_cancel_btn.setText(tr("Cancelar"))
         self.batch_cancel_btn.setToolTip(tr("Cancelar a comparação em andamento (os lotes prontos continuam)"))
         self.batch_cancel_btn.clicked.connect(self.cancel_batches)
-        for w in (self.batch_prev_btn, self.batch_label, self.batch_next_btn, self.batch_progress,
+        for w in (self.batch_prev_btn, self.batch_label, self.batch_next_btn, self.recompare_btn, self.batch_progress,
                   self.batch_cancel_btn):
             row.addWidget(w)
         self.batch_bar.hide()
@@ -788,7 +808,7 @@ class MainWindow(QMainWindow):
             self.refresh()
 
     def realign(self) -> None:
-        self._alignment_changed = True
+        self._alignment_touched = True
         if self.sessions:
             self.nav.realign()
             self.refresh()
@@ -796,13 +816,13 @@ class MainWindow(QMainWindow):
 
     def _on_pane_step(self, index: int, delta: int) -> None:
         self._user_busy()
-        self._alignment_changed = True
+        self._alignment_touched = True
         self.nav.step_pane(index, delta)
         self.refresh()
 
     def _on_pane_jump(self, index: int, page: int) -> None:
         self._user_busy()
-        self._alignment_changed = True
+        self._alignment_touched = True
         self.nav.show_page(index, page)
         self.refresh()
 
@@ -1596,6 +1616,7 @@ class MainWindow(QMainWindow):
             self.diff_cache.purge(compare.cache_days)
         if compare.batch_size != old.batch_size:
             self._batch_signature = None        # novo tamanho de lote: replaneja
+            self._realign_pending = False
         if compare.next_mode != NEXT_AUTO and old.next_mode == NEXT_AUTO:
             self.runner.cancel_background()
         if self.act_diff.isChecked():
@@ -1628,6 +1649,8 @@ class MainWindow(QMainWindow):
         if not self.act_diff.isChecked() or len(self.sessions) < 2:
             self.runner.reset()
             self._batch_signature = None
+            self._realign_timer.stop()
+            self._realign_pending = False
             self.nav.clear_diffs()
             self.diff_label.hide()
             self.batch_bar.hide()
@@ -1640,10 +1663,10 @@ class MainWindow(QMainWindow):
             self._update_batch_status()
             return
         signature = self._diff_signature(indexes)
-        if self._batch_signature is not None and not self._alignment_changed:
+        if self._batch_signature is not None and not self._adopt_offsets:
             # ir à próxima diferença/ocorrência também move os PDFs, mas não muda o plano
             signature = signature[:3] + self._batch_signature[3:4] + signature[4:]
-        self._alignment_changed = False
+        self._adopt_offsets = False
         if not self._same_plan(signature):
             ref_offset = self.sessions[0].offset
             offsets = [ref_offset - s.offset for s in self.sessions]   # página do PDF i = página da referência + isto
@@ -1677,12 +1700,10 @@ class MainWindow(QMainWindow):
         batches = self.runner.batches
         if not batches:
             return
-        if self._alignment_changed and len(batches) > 1:
-            offsets = tuple(s.offset for s in self.sessions)
-            if self._batch_signature is not None and offsets != self._batch_signature[3]:
-                self.update_diff()   # o usuário realinhou um PDF: replaneja os lotes
-                return
-            self._alignment_changed = False
+        if self._alignment_touched:
+            self._alignment_touched = False
+            if len(batches) > 1:
+                self._realign_timer.start()   # espera o usuário terminar de ajustar
         current = self._batch_at_view()
         moved = current != self._current_batch
         self._current_batch = current
@@ -1693,6 +1714,37 @@ class MainWindow(QMainWindow):
                 self.runner.request(k, priority=False)
         if moved:
             self._update_batch_status()
+
+    REALIGN_DELAY_MS = 1000
+
+    def _plan_offsets_differ(self) -> bool:
+        if self._batch_signature is None:
+            return False
+        return tuple(s.offset for s in self.sessions) != self._batch_signature[3]
+
+    def _alignment_settled(self) -> None:
+        """O usuário parou de ajustar o alinhamento: recompara ou oferece "Recomparar"."""
+        if not self.act_diff.isChecked() or len(self.runner.batches) <= 1:
+            return
+        if not self._plan_offsets_differ():
+            self._realign_pending = False     # voltou ao alinhamento da comparação atual
+        elif self.compare.realign_mode == REALIGN_AUTO:
+            self.recompare()
+            return
+        else:
+            self._realign_pending = True
+            self.statusBar().showMessage(tr("O alinhamento mudou. Clique em “Recomparar” para refazer os lotes "
+                                            "com o novo alinhamento."), 6000)
+        self._update_batch_status()
+
+    def recompare(self) -> None:
+        """Refaz o plano de lotes com o alinhamento atual (os lotes iguais vêm do cache)."""
+        self._realign_timer.stop()
+        self._realign_pending = False
+        if not self.act_diff.isChecked():
+            return
+        self._adopt_offsets = True
+        self.update_diff()
 
     def compare_next_batch(self) -> None:
         """Compara o lote à vista (se ainda não foi) ou o próximo, e vai até ele."""
@@ -1775,6 +1827,10 @@ class MainWindow(QMainWindow):
         else:
             self.act_batch_next.setEnabled(False)
             self.act_batch_prev.setEnabled(False)
+        self.recompare_btn.setVisible(multi and self._realign_pending)
+        self.act_recompare.setEnabled(multi and self._plan_offsets_differ())
+        if multi and self._realign_pending:
+            self.batch_label.setText(self.batch_label.text() + " · " + tr("alinhamento mudou"))
         self.batch_next_btn.setEnabled(self.act_batch_next.isEnabled())
         self.batch_prev_btn.setEnabled(self.act_batch_prev.isEnabled())
         if not on:

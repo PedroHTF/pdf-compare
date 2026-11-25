@@ -86,6 +86,10 @@ with **◀** and **Compare next batch ▶** (F8). It runs in the background, wit
 - **Pages per batch** (or "All at once");
 - **Compare the next batch:** when you click, or automatically in the background, choosing how
   many batches to prepare ahead and whether to pause while you scroll or add marks;
+- **When the alignment changes** (pane ◀ ▶, typed page or Realign): the program waits until you
+  finish adjusting and shows **Recompare** on the batch bar; until then the current comparison
+  stays on screen. You can also choose to recompare automatically. Batches with the same pages
+  come from the cache, and going to the next difference (F7) never redoes the comparison;
 - **Saved comparisons:** compared batches are stored (`%APPDATA%\PDFCompare\PDF Compare\comparacoes`),
   identified by the PDFs' content, and reused when the same files are opened again. Unused ones
   are deleted after N days (or never); **Clear cache now** deletes everything.

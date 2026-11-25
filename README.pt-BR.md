@@ -90,6 +90,10 @@ progresso e botão **Cancelar**, sem travar o programa. Em **Editar › Configur
 - **Páginas por lote** (ou "Tudo de uma vez");
 - **Comparar o próximo lote:** ao clicar, ou automaticamente em segundo plano, escolhendo
   quantos lotes preparar à frente e se deve pausar enquanto você rola as páginas ou faz marcações;
+- **Quando o alinhamento mudar** (◀ ▶ de um painel, página digitada ou Realinhar): o programa
+  espera você terminar de ajustar e mostra **Recomparar** na barra de lotes; até lá, a comparação
+  atual continua na tela. Também dá para escolher recomparar automaticamente. Lotes com as mesmas
+  páginas vêm do cache, e ir à próxima diferença (F7) nunca refaz a comparação;
 - **Comparações salvas:** os lotes comparados ficam guardados (`%APPDATA%\PDFCompare\PDF Compare\comparacoes`),
   identificados pelo conteúdo dos PDFs, e são reaproveitados ao reabrir os mesmos arquivos.
   Os não usados são apagados depois de N dias (ou nunca); **Limpar cache agora** apaga tudo.

@@ -269,10 +269,12 @@ def test_settings_change_batch_size_replans(window, qtbot, long_pdfs):
     values = SettingsValues("pt", w.ocr_language(), w.prefs.diff_colors(), w.mark_style, w.compare)
     dialog = SettingsDialog(values, cache_info=w.cache_summary, clear_cache=w.clear_diff_cache)
     assert not dialog.lookahead_combo.isEnabled()          # só no modo automático
+    assert dialog.realign_combo.currentData() == "click"
     dialog.next_combo.setCurrentIndex(dialog.next_combo.findData(NEXT_AUTO))
     assert dialog.lookahead_combo.isEnabled()
     dialog.batch_spin.setValue(0)
     assert dialog.batch_spin.text() == "Tudo de uma vez" and not dialog.next_combo.isEnabled()
+    assert not dialog.realign_combo.isEnabled()
     dialog.cache_days_spin.setValue(0)
     assert dialog.cache_days_spin.text() == "Nunca"
     w.apply_settings(dialog.values())
@@ -281,17 +283,71 @@ def test_settings_change_batch_size_replans(window, qtbot, long_pdfs):
     assert w.nav.total_diffs == 4 and Preferences(w.settings).compare_settings().cache_days == 0
 
 
-def test_realigning_a_pane_replans_batches(window, qtbot, long_pdfs):
+def _settle(qtbot, w):
+    """Espera a pausa depois do ajuste de alinhamento (encurtada nos testes)."""
+    qtbot.waitUntil(lambda: not w._realign_timer.isActive(), timeout=3000)
+
+
+def test_realigning_waits_for_click_by_default(window, qtbot, long_pdfs):
     w = window
+    w._realign_timer.setInterval(30)
     _open_with(w, qtbot, long_pdfs, batch_size=5, next_mode=NEXT_AUTO, lookahead=0, pause_while_busy=False)
     w.act_diff.trigger()
     _idle(qtbot, w)
-    w._on_pane_step(1, +1)                       # o usuário adianta o 2º PDF em uma página
-    assert w.runner.batches[0].ranges[1] == (0, 6)
+    before = w.nav.diffs
+    for _ in range(3):                           # vários ajustes seguidos: nada é refeito ainda
+        w._on_pane_step(1, +1)
+    assert w._realign_timer.isActive() and not w.recompare_btn.isVisibleTo(w)
+    _settle(qtbot, w)
+    assert w.runner.batches[0].ranges[1] == (0, 5)            # o plano antigo continua valendo
+    assert w.nav.diffs == before and w.runner.done_count() == 3
+    assert w.recompare_btn.isVisibleTo(w) and "alinhamento mudou" in w.batch_label.text()
+
+    w.recompare_btn.click()
+    assert w.runner.batches[0].ranges[1] == (0, 8) and not w.recompare_btn.isVisibleTo(w)
     _idle(qtbot, w)
     assert w.runner.done_count() == 3
-    w.realign()
-    assert w.runner.batches[0].ranges[1] == (0, 5)
+
+    for _ in range(3):
+        w._on_pane_step(1, -1)                   # voltou ao alinhamento: "Recomparar" some sozinho
+    _settle(qtbot, w)
+    assert w.recompare_btn.isVisibleTo(w)
+    w._on_pane_step(1, +3)
+    _settle(qtbot, w)
+    assert not w.recompare_btn.isVisibleTo(w) and not w._realign_pending
+
+
+def test_realigning_recompares_automatically_when_chosen(window, qtbot, long_pdfs):
+    w = window
+    w._realign_timer.setInterval(30)
+    _open_with(w, qtbot, long_pdfs, batch_size=5, next_mode=NEXT_AUTO, lookahead=0, pause_while_busy=False,
+               realign_mode="auto")
+    w.act_diff.trigger()
+    _idle(qtbot, w)
+    w._on_pane_step(1, +1)
+    w._on_pane_step(1, +1)
+    assert w.runner.batches[0].ranges[1] == (0, 5)            # ainda dentro da pausa
+    _settle(qtbot, w)
+    assert w.runner.batches[0].ranges[1] == (0, 7) and not w.recompare_btn.isVisibleTo(w)
+    _idle(qtbot, w)
+
+    w.realign()                                  # volta ao alinhamento original: lotes vêm do cache
+    _settle(qtbot, w)
+    _idle(qtbot, w)
+    assert w.runner.batches[0].ranges[1] == (0, 5) and w.runner.from_cache == 3
+
+
+def test_diff_navigation_never_replans(window, qtbot, long_pdfs):
+    w = window
+    w._realign_timer.setInterval(30)
+    _open_with(w, qtbot, long_pdfs, batch_size=5, next_mode=NEXT_AUTO, lookahead=0, pause_while_busy=False)
+    w.act_diff.trigger()
+    _idle(qtbot, w)
+    plan = w.runner.batches
+    for _ in range(4):
+        w.act_diff_next.trigger()                # F7 move cada PDF, mas não é ajuste de alinhamento
+    qtbot.wait(80)
+    assert w.runner.batches is plan and not w._realign_pending
 
 
 def test_turning_diff_off_stops_and_hides(window, qtbot, long_pdfs):
