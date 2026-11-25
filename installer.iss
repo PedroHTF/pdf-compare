@@ -1,5 +1,5 @@
 ; Instalador do PDF Compare (Inno Setup 6) — gerado a partir de dist\PDFCompare.
-; Uso (depois do build.ps1):  ISCC.exe /DAppVersion=0.2.0 installer.iss
+; Uso (depois do build.ps1):  ISCC.exe /DAppVersion=0.3.0 installer.iss
 ; O workflow .github/workflows/release.yml faz isso automaticamente.
 
 #ifndef AppVersion

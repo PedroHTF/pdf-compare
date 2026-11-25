@@ -778,4 +778,44 @@ EN = {
         'In a chain (each PDF with the previous one)',
     'Visual':
         'Visual',
+    '&Verificar atualizações agora':
+        'Check for &updates now',
+    'Consultar no GitHub se há uma versão mais nova do PDF Compare':
+        'Check GitHub for a newer version of PDF Compare',
+    'Baixar':
+        'Download',
+    'Abrir a página da nova versão no navegador (downloads e novidades)':
+        'Open the new version page in the browser (downloads and release notes)',
+    'Ignorar esta versão':
+        'Skip this version',
+    'Esconder até a próxima vez que o programa abrir':
+        'Hide until the program opens again',
+    'Verificando atualizações…':
+        'Checking for updates…',
+    'Verificar atualizações':
+        'Check for updates',
+    'Não foi possível consultar o GitHub agora. Verifique a conexão e tente de novo.':
+        'Could not reach GitHub right now. Check the connection and try again.',
+    'Você já tem a versão mais recente ({version}).':
+        'You already have the latest version ({version}).',
+    'PDF Compare {version} disponível':
+        'PDF Compare {version} available',
+    'Nova versão disponível':
+        'New version available',
+    'O PDF Compare {new} está disponível (você tem a {current}).':
+        'PDF Compare {new} is available (you have {current}).',
+    'A página da versão tem o instalador, a versão portátil e as novidades.':
+        'The version page has the installer, the portable version and the release notes.',
+    'Abrir página da versão':
+        'Open version page',
+    'Agora não':
+        'Not now',
+    'Você não será avisado da versão {version} de novo. Ajuda › Verificar atualizações agora continua mostrando.':
+        'You won’t be notified about version {version} again. Help › Check for updates now still shows it.',
+    'Verificar atualizações ao abrir (no máximo uma vez por dia)':
+        'Check for updates on startup (at most once a day)',
+    'Só consulta no GitHub o número da última versão. Nada é baixado ou instalado sem você pedir.':
+        'Only asks GitHub for the latest version number. Nothing is downloaded or installed unless you ask.',
+    'Atualizações':
+        'Updates',
 }
