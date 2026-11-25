@@ -224,14 +224,6 @@ EN = {
     "Ctrl + roda do mouse": "Ctrl + mouse wheel",
     "Aumentar / diminuir zoom": "Zoom in / out",
     "Ajustar à largura / página inteira": "Fit width / whole page",
-    "<p>Em cada painel: <b>◀ ▶</b> mudam só aquele PDF, <b>▲ ▼</b> navegam pelas ocorrências dele e o campo "
-    "de página permite digitar o número.</p><p>Comparar texto: <span style='background:#cdeccd'>verde</span> = "
-    "incluído, <span style='background:#f6c9c4'>vermelho</span> = removido, "
-    "<span style='background:#cfdffb'>azul</span> = alterado.</p>":
-        "<p>In each pane: <b>◀ ▶</b> change only that PDF, <b>▲ ▼</b> go through its matches and the page "
-        "field lets you type the number.</p><p>Compare text: <span style='background:#cdeccd'>green</span> = "
-        "added, <span style='background:#f6c9c4'>red</span> = removed, "
-        "<span style='background:#cfdffb'>blue</span> = changed.</p>",
     "Sobre o {app}": "About {app}",
     "<p>Compare de 2 a 6 PDFs lado a lado, com pesquisa simultânea e navegação página a página.</p>"
     "<p>Os arquivos são processados apenas neste computador.</p>":
@@ -276,9 +268,6 @@ EN = {
 
     # --- comparação de texto --------------------------------------------------------
     "Comparando texto… aguardando a leitura dos PDFs": "Comparing text… waiting for the PDFs to be read",
-    "Verde: incluído · Vermelho: removido · Azul: alterado (em relação ao primeiro PDF). "
-    "F7 vai para a próxima diferença.":
-        "Green: added · Red: removed · Blue: changed (compared with the first PDF). F7 goes to the next difference.",
     "Texto idêntico ao do 1º PDF": "Text identical to the 1st PDF",
     "Diferenças em relação a {name} — {parts}": "Differences from {name} — {parts}",
     "Nenhuma diferença de texto para navegar.": "No text differences to navigate.",
@@ -293,7 +282,7 @@ EN = {
     "Somente a posição atual": "Current position only",
     "Todas as páginas (uma página/imagem por posição)": "All pages (one page/image per position)",
     " dpi": " dpi",
-    "Incluir minhas anotações (destaques e notas)": "Include my annotations (highlights and notes)",
+    "Incluir minhas marcações (destaques, formas, textos e notas)": "Include my marks (highlights, shapes, text and notes)",
     "Formato:": "Format:",
     "Páginas:": "Pages:",
     "Resolução do PNG:": "PNG resolution:",
@@ -341,4 +330,209 @@ EN = {
     "O Tesseract foi encontrado, mas falta o idioma “{missing}”.\nIdiomas instalados: {langs}.":
         "Tesseract was found, but the “{missing}” language is missing.\nInstalled languages: {langs}.",
     "nenhum": "none",
+    # --- v0.3.0: Configurações e marcações ---
+    '&Configurações…':
+        '&Settings…',
+    '&Copiar marcação':
+        '&Copy mark',
+    '&Desfazer':
+        '&Undo',
+    '&Excluir marcação':
+        '&Delete mark',
+    '&Marcações':
+        '&Marks',
+    '&Refazer':
+        '&Redo',
+    '&Selecionar e mover':
+        '&Select and move',
+    "<p>Comparar texto: <span style='color:{added}'>■</span> incluído, <span style='color:{removed}'>■</span> removido, <span style='color:{changed}'>■</span> alterado (cores em Ferramentas › Configurações).</p>":
+        "<p>Compare text: <span style='color:{added}'>■</span> added, <span style='color:{removed}'>■</span> removed, <span style='color:{changed}'>■</span> changed (colors in Tools › Settings).</p>",
+    '<p>Em cada painel: <b>◀ ▶</b> mudam só aquele PDF, <b>▲ ▼</b> navegam pelas ocorrências dele e o campo de página permite digitar o número.</p>':
+        '<p>In each pane: <b>◀ ▶</b> change only that PDF, <b>▲ ▼</b> go through its matches and the page field lets you type a number.</p>',
+    'A troca de idioma vale depois de reiniciar o programa.':
+        'The new language takes effect after restarting the program.',
+    'Alterado':
+        'Changed',
+    'Aplicar o estilo atual':
+        'Apply current style',
+    'Aprovado':
+        'Approved',
+    'Balão':
+        'Callout',
+    'Balão: arraste do ponto indicado até onde fica o texto':
+        'Callout: drag from the point to where the text goes',
+    'Barra de &marcação':
+        '&Markup toolbar',
+    'Barra de marcação':
+        'Markup toolbar',
+    'Caixa de texto':
+        'Text box',
+    'Caixa de texto: arraste para definir a área (ou clique)':
+        'Text box: drag to set the area (or click)',
+    'Cancelar':
+        'Cancel',
+    'Cancelar o desenho, desmarcar ou voltar à seleção':
+        'Cancel drawing, deselect or go back to selecting',
+    'Caneta':
+        'Pen',
+    'Caneta: desenhe à mão livre':
+        'Pen: draw freehand',
+    'Carimbo':
+        'Stamp',
+    'Carimbo “{stamp}”: clique na página. Esc para sair.':
+        'Stamp “{stamp}”: click on the page. Esc to exit.',
+    'Carimbo: escolha o texto e clique na página':
+        'Stamp: choose the text and click on the page',
+    'Co&lar marcação':
+        '&Paste mark',
+    'Colar a marcação copiada na página à vista do painel':
+        'Paste the copied mark on the page shown in the pane',
+    'Confidencial':
+        'Confidential',
+    'Configurações':
+        'Settings',
+    'Copiar':
+        'Copy',
+    'Copiar, colar ou excluir a marcação selecionada':
+        'Copy, paste or delete the selected mark',
+    'Cor':
+        'Color',
+    'Cor do contorno e do texto':
+        'Outline and text color',
+    'Cor do destaque':
+        'Highlight color',
+    'Cores da comparação':
+        'Comparison colors',
+    'Desfazer / refazer alterações nas marcações':
+        'Undo / redo changes to marks',
+    'Desfazer a última alteração nas marcações':
+        'Undo the last change to marks',
+    'Destacar texto: arraste sobre o texto':
+        'Highlight text: drag over the text',
+    'Destaque':
+        'Highlight',
+    'Divergência':
+        'Discrepancy',
+    'Duplo clique':
+        'Double-click',
+    'E&ditar':
+        '&Edit',
+    'Editar o texto da marcação':
+        'Edit the mark’s text',
+    'Editar texto…':
+        'Edit text…',
+    'Elipse':
+        'Ellipse',
+    'Elipse: arraste na página':
+        'Ellipse: drag on the page',
+    'Esc para sair.':
+        'Esc to exit.',
+    'Escolher cor…':
+        'Choose color…',
+    'Espessura':
+        'Width',
+    'Espessura do contorno':
+        'Outline width',
+    'Este painel não tem página nesta posição.':
+        'This pane has no page at this position.',
+    'Fonte':
+        'Font',
+    'Geral':
+        'General',
+    'Idiomas instalados: {langs}. Use + para combinar (ex.: eng+por).':
+        'Installed languages: {langs}. Use + to combine (e.g. eng+por).',
+    'Idiomas, cores da comparação e estilo das marcações':
+        'Languages, comparison colors and mark style',
+    'Incluído':
+        'Added',
+    'Incluído · removido · alterado, em relação ao primeiro PDF (cores em Ferramentas › Configurações). F7 vai para a próxima diferença.':
+        'Added · removed · changed, relative to the first PDF (colors in Tools › Settings). F7 goes to the next difference.',
+    'Linha':
+        'Line',
+    'Linha: arraste na página':
+        'Line: drag on the page',
+    'Lista de &marcações':
+        '&Marks list',
+    'Lista de marcações':
+        'Marks list',
+    'Marcação copiada. Ctrl+V cola na página à vista.':
+        'Mark copied. Ctrl+V pastes it on the page shown.',
+    'Marcações':
+        'Marks',
+    'Mostrar a lista de todas as marcações (Ctrl+Shift+M)':
+        'Show the list of all marks (Ctrl+Shift+M)',
+    'Mostrar só um tipo de marcação':
+        'Show only one type of mark',
+    'Mostrar só uma cor':
+        'Show only one color',
+    'Mostrar/ocultar a lista de marcações':
+        'Show/hide the marks list',
+    'Nenhuma marcação ainda. Use a barra de marcação para destacar, desenhar ou escrever.':
+        'No marks yet. Use the markup toolbar to highlight, draw or write.',
+    'Nota: clique no ponto da página':
+        'Note: click on the spot on the page',
+    'Ondulado':
+        'Squiggly',
+    'Opacidade':
+        'Opacity',
+    'Outro texto…':
+        'Other text…',
+    'Polígono':
+        'Polygon',
+    'Polígono: clique em cada vértice e dê duplo clique para terminar (Esc cancela)':
+        'Polygon: click each vertex and double-click to finish (Esc cancels)',
+    'Preench.':
+        'Fill',
+    'Preenchimento das formas':
+        'Shape fill',
+    'Refazer a alteração desfeita':
+        'Redo the undone change',
+    'Rejeitado':
+        'Rejected',
+    'Removido':
+        'Removed',
+    'Restaurar cores padrão':
+        'Restore default colors',
+    'Restaurar estilo padrão':
+        'Restore default style',
+    'Retângulo':
+        'Rectangle',
+    'Retângulo: arraste na página':
+        'Rectangle: drag on the page',
+    'Revisar':
+        'Review',
+    'Selecionar, mover e redimensionar marcações (duplo clique edita o texto)':
+        'Select, move and resize marks (double-click edits the text)',
+    'Sem preenchimento':
+        'No fill',
+    'Seta':
+        'Arrow',
+    'Seta: arraste do início até a ponta':
+        'Arrow: drag from the start to the tip',
+    'Sublinhado':
+        'Underline',
+    'Sublinhado ondulado: arraste sobre o texto':
+        'Squiggly underline: drag over the text',
+    'Sublinhar texto: arraste sobre o texto':
+        'Underline text: drag over the text',
+    'Tachado':
+        'Strikeout',
+    'Tachar texto: arraste sobre o texto':
+        'Strike out text: drag over the text',
+    'Tamanho da fonte':
+        'Font size',
+    'Tamanho da fonte das caixas de texto, balões e carimbos':
+        'Font size for text boxes, callouts and stamps',
+    'Texto do carimbo:':
+        'Stamp text:',
+    'Texto:':
+        'Text:',
+    'Todas as cores':
+        'All colors',
+    'Todos os tipos':
+        'All types',
+    'p. {page}  —  {kind}':
+        'p. {page}  —  {kind}',
+    '{n} marcação(ões). Clique para ir até ela.':
+        '{n} mark(s). Click to go to it.',
 }

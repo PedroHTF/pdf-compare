@@ -68,7 +68,7 @@ class ExportDialog(QDialog):
         self.dpi.setSingleStep(50)
         self.dpi.setValue(150)
         self.dpi.setSuffix(tr(" dpi"))
-        self.annotations = QCheckBox(tr("Incluir minhas anotações (destaques e notas)"))
+        self.annotations = QCheckBox(tr("Incluir minhas marcações (destaques, formas, textos e notas)"))
         self.annotations.setChecked(has_annotations)
 
         form = QFormLayout()
