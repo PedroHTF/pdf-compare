@@ -68,6 +68,7 @@ Na primeira execução o Windows SmartScreen pode avisar que o programa não é 
 | Rolagem acompanhada | **Rolagem vinculada** (ligada por padrão): rolar um PDF rola os outros |
 | Trocar o idioma (English / Português) | **Ferramentas › Idioma / Language** e reinicie o programa |
 | Ver todos os atalhos | F1 |
+| Saber se há versão nova | O programa avisa na barra de status (no máximo uma vez por dia; desligue em **Editar › Configurações… › Geral**). **Ajuda › Verificar atualizações agora** consulta na hora |
 
 **Modelo de navegação.** Todos os PDFs compartilham uma posição. Os botões de um painel
 deslocam só aquele documento. Depois disso, ao avançar todos juntos, a diferença é mantida,
@@ -200,7 +201,7 @@ copie a pasta `dist\PDFCompare` inteira.
 Com o [Inno Setup 6](https://jrsoftware.org/isinfo.php) instalado, depois do `build.ps1`:
 
 ```bash
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=0.2.0 installer.iss
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=0.3.0 installer.iss
 ```
 
 O instalador fica em `dist\installer\`.
@@ -210,11 +211,12 @@ O instalador fica em `dist\installer\`.
 O GitHub gera tudo sozinho (`.github/workflows/release.yml`): testes, executável, instalador,
 pacote portátil e código-fonte. Para lançar:
 
-1. Atualize `__version__` em `app/__init__.py` e faça o merge na `main`.
+1. Atualize `__version__` em `app/__init__.py`, escreva as novidades em `CHANGELOG.md` (seção
+   `## [versão]`, que vira o texto da Release) e faça o merge na `main`.
 2. Crie e envie a tag com o mesmo número:
    ```bash
-   git tag v0.2.0
-   git push origin v0.2.0
+   git tag v0.3.0
+   git push origin v0.3.0
    ```
 3. Em alguns minutos a Release aparece em **Releases**, com os arquivos para download.
    Se a tag não bater com `__version__`, o workflow para com erro.
@@ -239,6 +241,7 @@ app/
   services/strip_layout.py disposição da rolagem contínua com os espaços de alinhamento
   services/visual_diff.py  diferença visual (pixel a pixel) entre páginas
   services/report.py       relatório de diferenças em PDF, HTML e CSV
+  services/updates.py      aviso de nova versão (consulta a última Release no GitHub)
   services/annotations.py  marcações (destaques, formas, textos, carimbos, notas) fora do PDF; PDF anotado
   services/preferences.py  cores da comparação e estilo padrão das marcações
   services/export.py       exportação lado a lado e das páginas atuais (PDF/PNG)

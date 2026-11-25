@@ -70,6 +70,7 @@ language (Portuguese if Windows is in Portuguese, English otherwise). To switch,
 | Zoom | Ctrl + mouse wheel, Ctrl++ / Ctrl+-, or the zoom list (width, whole page, %) |
 | Linked scrolling | **Linked scrolling** (on by default): scrolling one PDF scrolls the others |
 | See all shortcuts | F1 |
+| Know about new versions | The program shows a notice on the status bar (at most once a day; turn it off in **Edit › Settings… › General**). **Help › Check for updates now** checks right away |
 
 **Navigation model.** All PDFs share one position. A pane's buttons shift only that document.
 After that, moving all PDFs together keeps the offset, so you can compare versions with extra
@@ -194,7 +195,7 @@ copy the whole `dist\PDFCompare` folder.
 With [Inno Setup 6](https://jrsoftware.org/isinfo.php) installed, after `build.ps1`:
 
 ```bash
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=0.2.0 installer.iss
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=0.3.0 installer.iss
 ```
 
 The installer goes to `dist\installer\`.
@@ -204,11 +205,12 @@ The installer goes to `dist\installer\`.
 GitHub builds everything (`.github/workflows/release.yml`): tests, executable, installer,
 portable package and source code. To release:
 
-1. Update `__version__` in `app/__init__.py` and merge into `main`.
+1. Update `__version__` in `app/__init__.py`, write the changes in `CHANGELOG.md` (a `## [version]`
+   section, which becomes the Release text) and merge into `main`.
 2. Create and push the tag with the same number:
    ```bash
-   git tag v0.2.0
-   git push origin v0.2.0
+   git tag v0.3.0
+   git push origin v0.3.0
    ```
 3. A few minutes later the Release appears under **Releases** with the files to download.
    If the tag does not match `__version__`, the workflow stops with an error.
@@ -233,6 +235,7 @@ app/
   services/strip_layout.py continuous-scrolling layout with alignment spaces
   services/visual_diff.py  visual (pixel-by-pixel) difference between pages
   services/report.py       difference report as PDF, HTML and CSV
+  services/updates.py      new-version notice (checks the latest GitHub Release)
   services/annotations.py  marks (highlights, shapes, text, stamps, notes) kept outside the PDF; annotated PDF
   services/preferences.py  comparison colors and default mark style
   services/export.py       side-by-side and current-page export (PDF/PNG)

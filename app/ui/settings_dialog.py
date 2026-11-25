@@ -48,6 +48,7 @@ class SettingsValues:
     diff_colors: Dict[str, Color]
     mark_style: MarkStyle
     compare: CompareSettings = field(default_factory=lambda: DEFAULT_COMPARE)
+    check_updates: bool = True
 
 
 LOOKAHEAD_CHOICES = (1, 2, 3, 5, 10, LOOKAHEAD_ALL)
@@ -95,6 +96,11 @@ class SettingsDialog(QDialog):
             hint.setObjectName("muted")
             hint.setWordWrap(True)
             form.addRow("", hint)
+        self.updates_check = QCheckBox(tr("Verificar atualizações ao abrir (no máximo uma vez por dia)"))
+        self.updates_check.setChecked(values.check_updates)
+        self.updates_check.setToolTip(tr("Só consulta no GitHub o número da última versão. Nada é baixado "
+                                         "ou instalado sem você pedir."))
+        form.addRow(tr("Atualizações"), self.updates_check)
         return page
 
     def _compare_tab(self, values: SettingsValues) -> QWidget:
@@ -257,6 +263,7 @@ class SettingsDialog(QDialog):
                 width=float(self.mark_width.value()), opacity=self.mark_opacity.value() / 100,
                 font_size=float(self.mark_font.value()),
             ),
+            check_updates=self.updates_check.isChecked(),
             compare=CompareSettings(
                 batch_size=self.batch_spin.value(), next_mode=self.next_combo.currentData(),
                 lookahead=self.lookahead_combo.currentData(), pause_while_busy=self.pause_check.isChecked(),

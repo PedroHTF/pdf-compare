@@ -1,6 +1,7 @@
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")  # testes de interface sem abrir janelas
+os.environ["PDFCOMPARE_NO_UPDATE_CHECK"] = "1"         # os testes nunca consultam o GitHub
 
 from pathlib import Path  # noqa: E402
 from typing import List, Optional  # noqa: E402

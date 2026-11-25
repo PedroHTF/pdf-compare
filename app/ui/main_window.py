@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from app.i18n import LANGUAGES, language, tr
 
+import os
 from pathlib import Path
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -63,6 +64,7 @@ from app.services.content_align import (
 )
 from app.services.report import PairReport, make_report, write_report
 from app.services.strip_layout import StripLayout, compute_layouts
+from app.services.updates import ReleaseInfo, due, fetch_latest, is_newer
 from app.services.visual_diff import VISUAL, page_difference
 from app.services.diff_batches import ALL_PAGES, DiffCache, batch_for_page, format_size, plan_batches_from_rows
 from app.services.preferences import (
@@ -231,6 +233,7 @@ class MainWindow(QMainWindow):
         self._sync_zoom_combo()
         self._restore_ocr()
         self._update_ui_state()
+        self._init_updates()
 
     # ======================================================================
     # Construção da interface
@@ -392,6 +395,9 @@ class MainWindow(QMainWindow):
         self.act_license = self._action(tr("&Licença e créditos…"), self.show_license,
                                         tip=tr("O que você pode fazer com este programa e licenças dos componentes"))
         self.act_about = self._action(tr("&Sobre"), self.show_about)
+        self.act_check_updates = self._action(tr("&Verificar atualizações agora"),
+                                              lambda: self.check_updates(manual=True), [],
+                                              tr("Consultar no GitHub se há uma versão mais nova do PDF Compare"))
 
     def _create_menus(self) -> None:
         bar = self.menuBar()
@@ -459,7 +465,10 @@ class MainWindow(QMainWindow):
             action.triggered.connect(lambda _c=False, c=code: self.set_ui_language(c))
 
         m = bar.addMenu(tr("A&juda"))
-        m.addActions([self.act_shortcuts, self.act_license, self.act_about])
+        m.addActions([self.act_shortcuts, self.act_license])
+        m.addSeparator()
+        m.addAction(self.act_check_updates)
+        m.addAction(self.act_about)
 
     def _create_toolbars(self) -> None:
         tb = QToolBar(tr("Barra principal"))
@@ -1221,6 +1230,136 @@ class MainWindow(QMainWindow):
                       added=colors[ADDED], removed=colors[REMOVED], changed=colors[CHANGED]))
         QMessageBox.information(self, tr("Atalhos de teclado"), f"<table>{table}</table>{extra}")
 
+    # ======================================================================
+    # Aviso de nova versão
+    # ======================================================================
+    def _init_updates(self) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+
+        self.fetch_release = fetch_latest          # substituído nos testes
+        self._update_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pdfcompare-updates")
+        self._update_future = None
+        self._update_manual = False
+        self.available_release: Optional[ReleaseInfo] = None
+        self._update_timer = QTimer(self)
+        self._update_timer.setInterval(200)
+        self._update_timer.timeout.connect(self._poll_update)
+        self._create_update_bar()
+        if not os.environ.get("PDFCOMPARE_NO_UPDATE_CHECK"):
+            QTimer.singleShot(4000, self._auto_check_updates)   # depois de abrir, sem atrasar a janela
+
+    def _create_update_bar(self) -> None:
+        from PySide6.QtWidgets import QHBoxLayout, QToolButton
+
+        self.update_bar = QWidget()
+        self.update_bar.setObjectName("updateBar")
+        row = QHBoxLayout(self.update_bar)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        self.update_label = QLabel()
+        self.update_label.setObjectName("updateLabel")
+        self.update_download_btn = QToolButton()
+        self.update_download_btn.setText(tr("Baixar"))
+        self.update_download_btn.setToolTip(tr("Abrir a página da nova versão no navegador (downloads e novidades)"))
+        self.update_download_btn.clicked.connect(self.open_release_page)
+        self.update_skip_btn = QToolButton()
+        self.update_skip_btn.setText(tr("Ignorar esta versão"))
+        self.update_skip_btn.clicked.connect(self.skip_release)
+        self.update_close_btn = QToolButton()
+        self.update_close_btn.setText("✕")
+        self.update_close_btn.setToolTip(tr("Esconder até a próxima vez que o programa abrir"))
+        self.update_close_btn.clicked.connect(lambda: self.update_bar.hide())
+        for w in (self.update_label, self.update_download_btn, self.update_skip_btn, self.update_close_btn):
+            row.addWidget(w)
+        self.update_bar.hide()
+        self.statusBar().addPermanentWidget(self.update_bar)
+
+    def updates_enabled(self) -> bool:
+        return self._bool_setting("updates/check", True)
+
+    def _auto_check_updates(self) -> None:
+        try:
+            last = float(self.settings.value("updates/last_check", 0) or 0)
+        except (TypeError, ValueError):
+            last = 0.0
+        if self.updates_enabled() and due(last):
+            self.check_updates(manual=False)
+
+    def check_updates(self, manual: bool = False) -> None:
+        """Consulta a última versão em segundo plano (manual: também avisa se já está atualizado)."""
+        self._update_manual = self._update_manual or manual
+        if self._update_future is not None:
+            return
+        if manual:
+            self.statusBar().showMessage(tr("Verificando atualizações…"), 3000)
+        self._update_future = self._update_executor.submit(self.fetch_release)
+        self._update_timer.start()
+
+    def _poll_update(self) -> None:
+        future = self._update_future
+        if future is None or not future.done():
+            return
+        self._update_timer.stop()
+        self._update_future = None
+        manual, self._update_manual = self._update_manual, False
+        try:
+            release = future.result()
+        except Exception:
+            release = None
+        import time as _time
+
+        self.settings.setValue("updates/last_check", _time.time())
+        self.on_release_info(release, manual)
+
+    def on_release_info(self, release: Optional[ReleaseInfo], manual: bool) -> None:
+        from app import __version__
+
+        if release is None:
+            if manual:
+                self._notify("warning", tr("Verificar atualizações"),
+                             tr("Não foi possível consultar o GitHub agora. Verifique a conexão e tente de novo."))
+            return
+        if not is_newer(release.version, __version__):
+            self.available_release = None
+            self.update_bar.hide()
+            if manual:
+                self._notify("info", tr("Verificar atualizações"),
+                             tr("Você já tem a versão mais recente ({version}).", version=__version__))
+            return
+        self.available_release = release
+        skipped = str(self.settings.value("updates/skip", "")) == release.version
+        if skipped and not manual:
+            return
+        self.update_label.setText(tr("PDF Compare {version} disponível", version=release.version))
+        self.update_label.setToolTip(release.notes[:600] or release.url)
+        self.update_bar.show()
+        if manual:
+            box = QMessageBox(self)
+            box.setWindowTitle(tr("Nova versão disponível"))
+            box.setText(tr("O PDF Compare {new} está disponível (você tem a {current}).",
+                           new=release.version, current=__version__))
+            box.setInformativeText(tr("A página da versão tem o instalador, a versão portátil e as novidades."))
+            open_button = box.addButton(tr("Abrir página da versão"), QMessageBox.ButtonRole.AcceptRole)
+            box.addButton(tr("Agora não"), QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is open_button:
+                self.open_release_page()
+
+    def open_release_page(self) -> None:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        if self.available_release is not None:
+            QDesktopServices.openUrl(QUrl(self.available_release.url))
+
+    def skip_release(self) -> None:
+        if self.available_release is not None:
+            self.settings.setValue("updates/skip", self.available_release.version)
+            self.statusBar().showMessage(tr("Você não será avisado da versão {version} de novo. Ajuda › "
+                                            "Verificar atualizações agora continua mostrando.",
+                                            version=self.available_release.version), 6000)
+        self.update_bar.hide()
+
     def show_about(self) -> None:
         box = QMessageBox(self)
         box.setWindowTitle(tr("Sobre o {app}", app=APP_NAME))
@@ -1721,7 +1860,7 @@ class MainWindow(QMainWindow):
         tessdata = ocr.find_tessdata()
         langs = ", ".join(ocr.installed_languages(tessdata)) or tr("nenhum (Tesseract não encontrado)")
         values = SettingsValues(str(self.settings.value("app/language", language())), self.ocr_language(),
-                                self.prefs.diff_colors(), self.mark_style, self.compare)
+                                self.prefs.diff_colors(), self.mark_style, self.compare, self.updates_enabled())
         dialog = SettingsDialog(values, tr("Idiomas instalados: {langs}. Use + para combinar (ex.: eng+por).",
                                            langs=langs), self,
                                 cache_info=self.cache_summary, clear_cache=self.clear_diff_cache)
@@ -1729,6 +1868,7 @@ class MainWindow(QMainWindow):
             self.apply_settings(dialog.values())
 
     def apply_settings(self, values) -> None:
+        self.settings.setValue("updates/check", bool(getattr(values, "check_updates", True)))
         if values.ocr_language != self.ocr_language():
             self.set_ocr_language(values.ocr_language)
         self.prefs.set_diff_colors(values.diff_colors)
@@ -2707,6 +2847,7 @@ class MainWindow(QMainWindow):
         self.settings.setValue("window/geometry", self.saveGeometry())
         self.settings.setValue("view/results_panel", self.results_dock.isVisible())
         self.settings.setValue("view/marks_panel", self.marks_dock.isVisible())
+        self._update_executor.shutdown(wait=False, cancel_futures=True)
         self.settings.setValue("view/mark_toolbar", self.mark_toolbar.isVisible())
         self._save_view_settings()
         self.runner.shutdown()
