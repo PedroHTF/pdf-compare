@@ -45,6 +45,8 @@ language (Portuguese if Windows is in Portuguese, English otherwise). To switch,
 | Go to the next match in **one** PDF | **▲ ▼** on the pane's yellow label |
 | See all matches in a list | **Match list** (Ctrl+Shift+F): snippet and page of each one; click to go there |
 | See text differences | **Compare text** (Ctrl+D). F7 / Shift+F7 go to the next / previous difference |
+| See differences in images, signatures, stamps or scanned pages | **Tools › Visual difference** (Ctrl+Shift+V): different areas get a dashed outline. Works with or without **Compare text**; sensitivity in **Settings › Comparison** |
+| Get the list of changes | **File › Difference report…** (Ctrl+Shift+R): page, text before and after, as PDF, HTML or CSV |
 | Choose the reference PDF | Right-click a PDF › **Use as comparison reference**, or **Tools › Comparison reference** |
 | Compare each version with the previous one | **Tools › Comparison reference › In a chain** (v1→v2→v3) |
 | Align pages by content | **Align by content** (Ctrl+Shift+L): added or removed pages appear with an empty pane next to them. A pane’s ◀ ▶ choose which page sits next to the reference; **Realign** undoes it |
@@ -83,6 +85,15 @@ word by word. Default colors: **green** = added, **red** (struck through) = remo
 **blue** = changed. The comparison ignores line and page breaks (text that only moved to another
 page is not a difference) and punctuation at the edges of words; case and accents count. The
 status bar shows the total per PDF. Colors can be changed in **Edit › Settings… › Comparison**.
+
+**Visual difference (optional).** Compares how pages look, pixel by pixel: renders both pages in
+grayscale, computes the difference and groups the changed areas. It finds what the text comparison
+cannot see (images, signatures, stamps, drawn tables, scanned PDFs without OCR). It is computed for the
+pages shown and kept in memory; sensitivity (1–100 %) and color are in **Settings › Comparison**.
+
+**Difference report.** Lists each text change (added, removed, changed) with the pages and the text
+before and after, for each comparison (reference or chain). **PDF** to send or print, **HTML** to open in
+a browser and **CSV** for Excel.
 
 **Reference and chain.** By default each PDF is compared with the first one. You can choose another
 PDF as the reference (a **Reference** badge in its header) or compare **in a chain**: the 2nd with
@@ -220,6 +231,8 @@ app/
   services/batch_runner.py runs batches in the background
   services/content_align.py content alignment (matching pages and lines) and manual adjustments
   services/strip_layout.py continuous-scrolling layout with alignment spaces
+  services/visual_diff.py  visual (pixel-by-pixel) difference between pages
+  services/report.py       difference report as PDF, HTML and CSV
   services/annotations.py  marks (highlights, shapes, text, stamps, notes) kept outside the PDF; annotated PDF
   services/preferences.py  comparison colors and default mark style
   services/export.py       side-by-side and current-page export (PDF/PNG)

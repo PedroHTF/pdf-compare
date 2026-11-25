@@ -32,6 +32,7 @@ from app.services.search import Hit
 from app.services.strip_layout import StripLayout
 from app.services.strip_layout import _build as rebuild_layout
 from app.services.text_diff import ADDED, CHANGED, REMOVED, DiffMark
+from app.services.visual_diff import VISUAL
 from app.ui.continuous import ContinuousCanvas
 from app.ui.widgets import ElidedLabel
 
@@ -139,6 +140,7 @@ class PdfPane(QFrame):
         self._cdata: dict = {"hits": {}, "diffs": {}, "marks": {}, "hit": None, "diff": None}
         self._cfocus = None
         self._max_size: Optional[Tuple[float, float]] = None
+        self.visual_provider = None            # rolagem contínua: página -> áreas da diferença visual
 
         self._build_header()
         self._build_view()
@@ -287,11 +289,13 @@ class PdfPane(QFrame):
         current_diff: Optional[DiffMark] = None,
         annotations: List[Annotation] = (),
         blank_text: str = "",
+        visual: List[DiffMark] = (),
     ) -> None:
         """Exibe a página `page` (None = posição fora do documento ou sem página correspondente)."""
         self._annotations = tuple(annotations)
         self._blank_text = blank_text
-        annot_key = tuple(repr(a) for a in annotations) + (self.selected_id, blank_text)
+        self._visual = tuple(visual)
+        annot_key = tuple(repr(a) for a in annotations) + (self.selected_id, blank_text, self._visual)
         args: RenderArgs = (page, raw_page, tuple(page_hits), current_hit, zoom,
                             tuple(page_diffs), current_diff, annot_key)
         if args == self._args:
@@ -418,8 +422,9 @@ class PdfPane(QFrame):
         preview = self._preview if self._preview is not None and self._preview.page == page_no else None
         hit = d["hit"] if d["hit"] is not None and d["hit"].page == page_no else None
         diff = d["diff"] if d["diff"] is not None and d["diff"].page == page_no else None
+        visual = tuple(self.visual_provider(page_no)) if self.visual_provider is not None else ()
         return (tuple(d["hits"].get(page_no, [])), hit, tuple(d["diffs"].get(page_no, [])), diff,
-                tuple(repr(a) for a in marks), repr(preview), self.selected_id)
+                tuple(repr(a) for a in marks), repr(preview), self.selected_id, visual)
 
     def page_image_with_overlays(self, page: fitz.Page, page_no: int, scale: float, dpr: float) -> QImage:
         d = self._cdata
@@ -428,9 +433,12 @@ class PdfPane(QFrame):
         if self._preview is not None and self._preview.page == page_no:
             marks = [a for a in marks if a.id != self._preview.id] + [self._preview]
         hits, diffs = d["hits"].get(page_no, []), d["diffs"].get(page_no, [])
-        if not (marks or hits or diffs):
+        visual = self.visual_provider(page_no) if self.visual_provider is not None else []
+        if not (marks or hits or diffs or visual):
             return image
         image = image.copy()
+        if visual:
+            self._paint_visual(image, page, visual, scale * dpr, dpr)
         if marks:
             self._paint_annotations(image, page, marks, scale * dpr, dpr, self.selected_id)
         if diffs:
@@ -547,8 +555,11 @@ class PdfPane(QFrame):
         marks = list(self._annotations)
         if self._preview is not None:
             marks = [a for a in marks if a.id != self._preview.id] + [self._preview]
-        if page_hits or page_diffs or marks:
+        visual = getattr(self, "_visual", ())
+        if page_hits or page_diffs or marks or visual:
             image = image.copy()
+            if visual:
+                self._paint_visual(image, page, visual, scale * dpr, dpr)
             if marks:
                 self._paint_annotations(image, page, marks, scale * dpr, dpr, self.selected_id)
             if page_diffs:
@@ -631,6 +642,21 @@ class PdfPane(QFrame):
     def _qrect(rect, matrix, scale: float) -> QRectF:
         r = (fitz.Rect(rect) * matrix).normalize()
         return QRectF(r.x0 * scale, r.y0 * scale, r.width * scale, r.height * scale)
+
+    @classmethod
+    def _paint_visual(cls, image: QImage, page: fitz.Page, marks, scale: float, dpr: float) -> None:
+        """Áreas da diferença visual: contorno tracejado com um leve preenchimento."""
+        fill, line = DIFF_STYLE.get(VISUAL, DIFF_STYLE[CHANGED])
+        painter = QPainter(image)
+        painter.setPen(QPen(line, 1.6 * dpr, Qt.PenStyle.DashLine))
+        light = QColor(fill)
+        light.setAlpha(35)
+        painter.setBrush(light)
+        matrix = page.rotation_matrix
+        for mark in marks:
+            for rect in mark.rects:
+                painter.drawRect(cls._qrect(rect, matrix, scale).adjusted(-2, -2, 2, 2))
+        painter.end()
 
     @classmethod
     def _paint_diffs(cls, image: QImage, page: fitz.Page, marks, current: Optional[DiffMark],

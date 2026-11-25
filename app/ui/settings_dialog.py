@@ -37,6 +37,7 @@ from app.services.preferences import (
     MarkStyle,
 )
 from app.services.text_diff import ADDED, CHANGED, REMOVED
+from app.services.visual_diff import VISUAL
 from app.ui.mark_widgets import ColorButton
 
 
@@ -155,12 +156,28 @@ class SettingsDialog(QDialog):
         form.addRow(note)
         layout.addWidget(saved)
 
+        visual = QGroupBox(tr("Diferença visual (pixel a pixel)"))
+        form = QFormLayout(visual)
+        self.visual_spin = QSpinBox()
+        self.visual_spin.setRange(1, 100)
+        self.visual_spin.setSuffix(" %")
+        self.visual_spin.setValue(c.visual_sensitivity)
+        self.visual_spin.setToolTip(tr("Mais alto: marca diferenças menores (e mais ruído em PDFs escaneados)"))
+        form.addRow(tr("Sensibilidade"), self.visual_spin)
+        note = QLabel(tr("Ligue em Ferramentas › Diferença visual. Encontra mudanças em imagens, assinaturas, "
+                         "carimbos e PDFs escaneados."))
+        note.setObjectName("muted")
+        note.setWordWrap(True)
+        form.addRow(note)
+        layout.addWidget(visual)
+
         colors = QGroupBox(tr("Cores"))
         form = QFormLayout(colors)
         self.diff_buttons = {
             ADDED: ColorButton(values.diff_colors[ADDED], tr("Incluído")),
             REMOVED: ColorButton(values.diff_colors[REMOVED], tr("Removido")),
             CHANGED: ColorButton(values.diff_colors[CHANGED], tr("Alterado")),
+            VISUAL: ColorButton(values.diff_colors[VISUAL], tr("Diferença visual")),
         }
         for kind, button in self.diff_buttons.items():
             form.addRow(button.toolTip(), button)
@@ -244,5 +261,6 @@ class SettingsDialog(QDialog):
                 batch_size=self.batch_spin.value(), next_mode=self.next_combo.currentData(),
                 lookahead=self.lookahead_combo.currentData(), pause_while_busy=self.pause_check.isChecked(),
                 cache_days=self.cache_days_spin.value(), realign_mode=self.realign_combo.currentData(),
+                visual_sensitivity=self.visual_spin.value(),
             ),
         )

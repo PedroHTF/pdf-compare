@@ -42,6 +42,8 @@ Na primeira execução o Windows SmartScreen pode avisar que o programa não é 
 | Ir à próxima ocorrência em **um** PDF | **▲ ▼** na etiqueta amarela do painel |
 | Ver todas as ocorrências em lista | **Lista de ocorrências** (Ctrl+Shift+F): trecho e página de cada uma; clique para ir até ela |
 | Ver as diferenças de texto | **Comparar texto** (Ctrl+D). F7 / Shift+F7 vão para a próxima / anterior diferença |
+| Ver diferenças de imagem, assinatura, carimbo ou página escaneada | **Ferramentas › Diferença visual** (Ctrl+Shift+V): áreas diferentes ganham contorno tracejado. Funciona com ou sem **Comparar texto**; sensibilidade em **Configurações › Comparação** |
+| Gerar a lista de mudanças | **Arquivo › Relatório de diferenças…** (Ctrl+Shift+R): página, texto antes e depois, em PDF, HTML ou CSV |
 | Escolher o PDF de referência | Botão direito em um PDF › **Usar como referência da comparação**, ou **Ferramentas › Referência da comparação** |
 | Comparar cada versão com a anterior | **Ferramentas › Referência da comparação › Em cadeia** (v1→v2→v3) |
 | Alinhar páginas pelo conteúdo | **Alinhar por conteúdo** (Ctrl+Shift+L): páginas incluídas ou removidas aparecem com o painel vazio ao lado. ◀ ▶ de um painel escolhem qual página fica ao lado da referência; **Realinhar** desfaz |
@@ -87,6 +89,16 @@ palavra por palavra. Cores: **verde** = incluído, **vermelho** (tachado) = remo
 página não aparece como diferença) e a pontuação nas bordas das palavras; maiúsculas e acentos
 contam. A barra de status mostra o total por PDF. As cores podem ser trocadas em
 **Editar › Configurações… › Comparação**.
+
+**Diferença visual (opcional).** Compara a aparência das páginas pixel a pixel: renderiza as duas
+páginas lado a lado em tons de cinza, calcula a diferença e agrupa as áreas alteradas. Encontra o que a
+comparação de texto não vê (imagens, assinaturas, carimbos, tabelas desenhadas, PDFs escaneados sem OCR).
+É calculada para as páginas à vista e fica em memória; a sensibilidade (1–100 %) e a cor ficam em
+**Configurações › Comparação**.
+
+**Relatório de diferenças.** Lista cada mudança de texto (incluído, removido, alterado) com as páginas e o
+texto antes e depois, para cada comparação (referência ou cadeia). **PDF** para enviar ou imprimir,
+**HTML** para abrir no navegador e **CSV** para o Excel (separador ";" em português).
 
 **Referência e cadeia.** Por padrão, cada PDF é comparado com o 1º. Dá para escolher outro PDF
 como referência (etiqueta **Referência** no cabeçalho) ou comparar **em cadeia**: o 2º com o 1º,
@@ -225,6 +237,8 @@ app/
   services/batch_runner.py execução dos lotes em segundo plano
   services/content_align.py alinhamento por conteúdo (páginas e linhas iguais) e ajustes manuais
   services/strip_layout.py disposição da rolagem contínua com os espaços de alinhamento
+  services/visual_diff.py  diferença visual (pixel a pixel) entre páginas
+  services/report.py       relatório de diferenças em PDF, HTML e CSV
   services/annotations.py  marcações (destaques, formas, textos, carimbos, notas) fora do PDF; PDF anotado
   services/preferences.py  cores da comparação e estilo padrão das marcações
   services/export.py       exportação lado a lado e das páginas atuais (PDF/PNG)

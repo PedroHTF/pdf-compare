@@ -107,7 +107,6 @@ EN = {
     "Ocorrência anterior": "Previous match",
     "Ir para a ocorrência anterior em cada PDF": "Go to the previous match in each PDF",
     "Comparar &texto": "Compare &text",
-    "Destacar as diferenças de texto em relação ao primeiro PDF": "Highlight text differences from the first PDF",
     "Próxima diferença": "Next difference",
     "Ir para a próxima diferença de texto em cada PDF": "Go to the next text difference in each PDF",
     "Diferença anterior": "Previous difference",
@@ -703,4 +702,80 @@ EN = {
         '◀ ▶ or arrow keys: move all together  ·  a pane’s ◀ ▶: choose which of its pages sits next to the reference',
     'Rolagem contínua':
         'Continuous scrolling',
+    'Antes':
+        'Before',
+    'Base':
+        'Base',
+    'Comparado':
+        'Compared',
+    'Depois':
+        'After',
+    'Gerado em {date} pelo PDF Compare':
+        'Generated on {date} by PDF Compare',
+    'PDFs':
+        'PDFs',
+    'Pág.':
+        'Page',
+    'Página (base)':
+        'Page (base)',
+    'Página (comparado)':
+        'Page (compared)',
+    'Relatório de diferenças':
+        'Difference report',
+    'Texto (base)':
+        'Text (base)',
+    'Texto (comparado)':
+        'Text (compared)',
+    'Texto idêntico.':
+        'Identical text.',
+    'Tipo':
+        'Type',
+    '{added} incluído(s) · {removed} removido(s) · {changed} alterado(s)':
+        '{added} added · {removed} removed · {changed} changed',
+    'Diferença visual':
+        'Visual difference',
+    'Diferença visual (pixel a pixel)':
+        'Visual difference (pixel by pixel)',
+    'Mais alto: marca diferenças menores (e mais ruído em PDFs escaneados)':
+        'Higher: marks smaller differences (and more noise in scanned PDFs)',
+    'Sensibilidade':
+        'Sensitivity',
+    'Ligue em Ferramentas › Diferença visual. Encontra mudanças em imagens, assinaturas, carimbos e PDFs escaneados.':
+        'Turn it on in Tools › Visual difference. Finds changes in images, signatures, stamps and scanned PDFs.',
+    '&Relatório de diferenças…':
+        'Difference &report…',
+    'Salvar a lista de mudanças entre os PDFs (página, texto antes e depois) em PDF, HTML ou CSV':
+        'Save the list of changes between the PDFs (page, text before and after) as PDF, HTML or CSV',
+    'Destacar as diferenças de texto em relação à referência':
+        'Highlight text differences relative to the reference',
+    'Diferença &visual':
+        '&Visual difference',
+    'Destacar áreas com aparência diferente, pixel a pixel (imagens, assinaturas, carimbos, páginas escaneadas). Funciona com ou sem a comparação de texto.':
+        'Highlight areas that look different, pixel by pixel (images, signatures, stamps, scanned pages). Works with or without the text comparison.',
+    'Diferença visual ligada: áreas diferentes aparecem com contorno tracejado. A sensibilidade fica em Configurações › Comparação.':
+        'Visual difference on: different areas get a dashed outline. Sensitivity is in Settings › Comparison.',
+    'Diferença visual ligada':
+        'Visual difference on',
+    'Diferença visual: {n} área(s) nas páginas à vista':
+        'Visual difference: {n} area(s) on the pages shown',
+    'Áreas com aparência diferente (imagens, assinaturas, carimbos, páginas escaneadas), com contorno tracejado.':
+        'Areas that look different (images, signatures, stamps, scanned pages), with a dashed outline.',
+    'Aguarde terminar a leitura dos PDFs para gerar o relatório.':
+        'Wait for the PDFs to finish loading to generate the report.',
+    'relatorio_de_diferencas.pdf':
+        'difference_report.pdf',
+    'Salvar relatório de diferenças':
+        'Save difference report',
+    'Referência: {name}':
+        'Reference: {name}',
+    'Relatório não salvo':
+        'Report not saved',
+    'Não foi possível salvar o relatório: {error}':
+        'Could not save the report: {error}',
+    'Relatório salvo ({n} mudança(s)): {path}':
+        'Report saved ({n} change(s)): {path}',
+    'Em cadeia (cada PDF com o anterior)':
+        'In a chain (each PDF with the previous one)',
+    'Visual':
+        'Visual',
 }
