@@ -42,6 +42,14 @@ Na primeira execução o Windows SmartScreen pode avisar que o programa não é 
 | Ir à próxima ocorrência em **um** PDF | **▲ ▼** na etiqueta amarela do painel |
 | Ver todas as ocorrências em lista | **Lista de ocorrências** (Ctrl+Shift+F): trecho e página de cada uma; clique para ir até ela |
 | Ver as diferenças de texto | **Comparar texto** (Ctrl+D). F7 / Shift+F7 vão para a próxima / anterior diferença |
+| Ver diferenças de imagem, assinatura, carimbo ou página escaneada | **Ferramentas › Diferença visual** (Ctrl+Shift+V): áreas diferentes ganham contorno tracejado. Funciona com ou sem **Comparar texto**; sensibilidade em **Configurações › Comparação** |
+| Gerar a lista de mudanças | **Arquivo › Relatório de diferenças…** (Ctrl+Shift+R): página, texto antes e depois, em PDF, HTML ou CSV |
+| Escolher o PDF de referência | Botão direito em um PDF › **Usar como referência da comparação**, ou **Ferramentas › Referência da comparação** |
+| Comparar cada versão com a anterior | **Ferramentas › Referência da comparação › Em cadeia** (v1→v2→v3) |
+| Alinhar páginas pelo conteúdo | **Alinhar por conteúdo** (Ctrl+Shift+L): páginas incluídas ou removidas aparecem com o painel vazio ao lado. ◀ ▶ de um painel escolhem qual página fica ao lado da referência; **Realinhar** desfaz |
+| Ver todas as páginas em sequência | **Rolagem contínua** (Ctrl+Shift+C) |
+| Ajustar o alinhamento na rolagem contínua | Arraste a alça embaixo de um espaço; botão direito › **Inserir espaço aqui**, **Remover este espaço** ou **Alinhar este trecho com…** (e clique no trecho correspondente em outro PDF) |
+| Comparar PDFs grandes por partes | A comparação é feita em lotes de páginas (padrão: 50). **Comparar próximo lote ▶** (F8) na barra de status; Shift+F8 volta |
 | Destacar, sublinhar ou tachar um trecho | Escolha a ferramenta na **barra de marcação** (Destacar: Ctrl+H) e arraste sobre o texto |
 | Desenhar retângulo, elipse, linha, seta ou à mão livre | Escolha a ferramenta e arraste na página |
 | Desenhar um polígono | Clique em cada vértice e dê duplo clique para terminar (Esc cancela) |
@@ -60,6 +68,7 @@ Na primeira execução o Windows SmartScreen pode avisar que o programa não é 
 | Rolagem acompanhada | **Rolagem vinculada** (ligada por padrão): rolar um PDF rola os outros |
 | Trocar o idioma (English / Português) | **Ferramentas › Idioma / Language** e reinicie o programa |
 | Ver todos os atalhos | F1 |
+| Saber se há versão nova | O programa avisa na barra de status (no máximo uma vez por dia; desligue em **Editar › Configurações… › Geral**). **Ajuda › Verificar atualizações agora** consulta na hora |
 
 **Modelo de navegação.** Todos os PDFs compartilham uma posição. Os botões de um painel
 deslocam só aquele documento. Depois disso, ao avançar todos juntos, a diferença é mantida,
@@ -80,7 +89,50 @@ palavra por palavra. Cores: **verde** = incluído, **vermelho** (tachado) = remo
 **azul** = alterado. A comparação ignora quebras de linha e de página (texto que só mudou de
 página não aparece como diferença) e a pontuação nas bordas das palavras; maiúsculas e acentos
 contam. A barra de status mostra o total por PDF. As cores podem ser trocadas em
-**Editar › Configurações… › Cores da comparação**.
+**Editar › Configurações… › Comparação**.
+
+**Diferença visual (opcional).** Compara a aparência das páginas pixel a pixel: renderiza as duas
+páginas lado a lado em tons de cinza, calcula a diferença e agrupa as áreas alteradas. Encontra o que a
+comparação de texto não vê (imagens, assinaturas, carimbos, tabelas desenhadas, PDFs escaneados sem OCR).
+É calculada para as páginas à vista e fica em memória; a sensibilidade (1–100 %) e a cor ficam em
+**Configurações › Comparação**.
+
+**Relatório de diferenças.** Lista cada mudança de texto (incluído, removido, alterado) com as páginas e o
+texto antes e depois, para cada comparação (referência ou cadeia). **PDF** para enviar ou imprimir,
+**HTML** para abrir no navegador e **CSV** para o Excel (separador ";" em português).
+
+**Referência e cadeia.** Por padrão, cada PDF é comparado com o 1º. Dá para escolher outro PDF
+como referência (etiqueta **Referência** no cabeçalho) ou comparar **em cadeia**: o 2º com o 1º,
+o 3º com o 2º, e assim por diante.
+
+**Alinhamento por conteúdo.** As linhas de texto dos PDFs são comparadas em ordem e cada página
+fica ao lado da página da referência com que mais compartilha linhas. Páginas que existem só em um
+PDF aparecem com o painel vazio nos outros, com uma explicação. Páginas muito alteradas ou sem texto
+são pareadas pela semelhança e pela ordem. Os ajustes manuais (◀ ▶ do painel, página digitada,
+espaços e trechos) ficam salvos para aqueles PDFs (pelo conteúdo) e voltam ao abri-los de novo;
+**Realinhar** desfaz todos.
+
+**Rolagem contínua.** Mostra as páginas uma embaixo da outra (**Exibir › Rolagem contínua**). Com o
+alinhamento por conteúdo ligado, entram **espaços de alinhamento** do tamanho do conteúdo incluído
+ou removido, no lugar onde ele estaria, para que os trechos iguais fiquem na mesma altura em todos os
+PDFs. Quando as páginas quebram em pontos diferentes, também entram espaços nas quebras. Quando o
+alinhamento automático erra (ex.: PDFs escaneados), arraste a alça de um espaço, insira ou remova um
+espaço, ou use **Alinhar este trecho com…**; um espaço ajustado à mão vale até o próximo trecho igual.
+
+**Comparação em lotes.** Em PDFs grandes a comparação é dividida em lotes de páginas do 1º PDF
+(os outros acompanham o alinhamento de cada painel). A barra de status mostra "Lote 2 de 8 ·
+páginas 51–100", com **◀** e **Comparar próximo lote ▶** (F8). Ela roda em segundo plano, com
+progresso e botão **Cancelar**, sem travar o programa. Em **Editar › Configurações… › Comparação**:
+- **Páginas por lote** (ou "Tudo de uma vez");
+- **Comparar o próximo lote:** ao clicar, ou automaticamente em segundo plano, escolhendo
+  quantos lotes preparar à frente e se deve pausar enquanto você rola as páginas ou faz marcações;
+- **Quando o alinhamento mudar** (◀ ▶ de um painel, página digitada ou Realinhar): o programa
+  espera você terminar de ajustar e mostra **Recomparar** na barra de lotes; até lá, a comparação
+  atual continua na tela. Também dá para escolher recomparar automaticamente. Lotes com as mesmas
+  páginas vêm do cache, e ir à próxima diferença (F7) nunca refaz a comparação;
+- **Comparações salvas:** os lotes comparados ficam guardados (`%APPDATA%\PDFCompare\PDF Compare\comparacoes`),
+  identificados pelo conteúdo dos PDFs, e são reaproveitados ao reabrir os mesmos arquivos.
+  Os não usados são apagados depois de N dias (ou nunca); **Limpar cache agora** apaga tudo.
 
 **Marcações.** Destaques, formas, textos, carimbos e notas ficam guardados na pasta de dados do programa
 (`%APPDATA%\PDFCompare\PDF Compare\anotacoes`), um arquivo por documento, identificado pelo
@@ -149,7 +201,7 @@ copie a pasta `dist\PDFCompare` inteira.
 Com o [Inno Setup 6](https://jrsoftware.org/isinfo.php) instalado, depois do `build.ps1`:
 
 ```bash
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=0.2.0 installer.iss
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=0.3.0 installer.iss
 ```
 
 O instalador fica em `dist\installer\`.
@@ -159,11 +211,12 @@ O instalador fica em `dist\installer\`.
 O GitHub gera tudo sozinho (`.github/workflows/release.yml`): testes, executável, instalador,
 pacote portátil e código-fonte. Para lançar:
 
-1. Atualize `__version__` em `app/__init__.py` e faça o merge na `main`.
+1. Atualize `__version__` em `app/__init__.py`, escreva as novidades em `CHANGELOG.md` (seção
+   `## [versão]`, que vira o texto da Release) e faça o merge na `main`.
 2. Crie e envie a tag com o mesmo número:
    ```bash
-   git tag v0.2.0
-   git push origin v0.2.0
+   git tag v0.3.0
+   git push origin v0.3.0
    ```
 3. Em alguns minutos a Release aparece em **Releases**, com os arquivos para download.
    Se a tag não bater com `__version__`, o workflow para com erro.
@@ -182,6 +235,13 @@ app/
   services/search.py       pesquisa de palavras e frases
   services/indexer.py      indexação em segundo plano sem travar a interface (e OCR, se ligado)
   services/text_diff.py    comparação de texto palavra por palavra
+  services/diff_batches.py lotes de páginas e cache das comparações em disco
+  services/batch_runner.py execução dos lotes em segundo plano
+  services/content_align.py alinhamento por conteúdo (páginas e linhas iguais) e ajustes manuais
+  services/strip_layout.py disposição da rolagem contínua com os espaços de alinhamento
+  services/visual_diff.py  diferença visual (pixel a pixel) entre páginas
+  services/report.py       relatório de diferenças em PDF, HTML e CSV
+  services/updates.py      aviso de nova versão (consulta a última Release no GitHub)
   services/annotations.py  marcações (destaques, formas, textos, carimbos, notas) fora do PDF; PDF anotado
   services/preferences.py  cores da comparação e estilo padrão das marcações
   services/export.py       exportação lado a lado e das páginas atuais (PDF/PNG)
@@ -190,6 +250,7 @@ app/
   i18n.py                  idioma da interface (tr); i18n_en.py tem as traduções para o inglês
   ui/main_window.py        janela, menus, barras, grade, arrastar e soltar
   ui/pane.py               painel de um PDF (renderização, destaques, controles)
+  ui/continuous.py         desenho da rolagem contínua (páginas cortadas nos espaços)
   ui/search_bar.py         barra de pesquisa
   ui/results_panel.py      lista de ocorrências (trecho + página)
   ui/marks_panel.py        lista de marcações com filtros
@@ -221,7 +282,8 @@ samples/                   PDFs de exemplo
 - Preferências (zoom, opções de pesquisa, tamanho da janela, última pasta, listas laterais,
   recentes, OCR, cores e estilo das marcações) ficam salvas entre execuções.
 - A comparação de texto é feita em dois níveis (linhas, depois palavras dentro das linhas
-  diferentes) com `difflib`, para continuar rápida em documentos longos.
+  diferentes) com `difflib`, para continuar rápida em documentos longos. Ela roda em uma thread
+  separada sobre as palavras já extraídas (nunca o PyMuPDF), lote a lote, com cache em disco.
 - Os textos do código são escritos em português e passam por `tr()`; as traduções para o inglês
   ficam em `app/i18n_en.py`. O teste `tests/test_i18n.py` falha se algum texto ficar sem tradução.
 - Toda a lógica nova (diferenças, marcações, exportação, sessões, OCR) fica em `app/services`,

@@ -32,6 +32,7 @@ QLabel#muted { color: gray; }
 QLabel#hitLabel { padding: 0 4px; background: transparent; }
 QLabel#hitLabel[state="none"] { color: #c5221f; }
 QLabel#hitLabel[state="found"] { font-weight: 600; }
+QLabel#roleBadge { padding: 1px 6px; border-radius: 8px; background: #1967d2; color: white; font-size: 11px; font-weight: 600; }
 
 QLabel#searchSummary[state="notfound"] { color: #c5221f; }
 QLabel#searchSummary[state="found"] { font-weight: 600; }

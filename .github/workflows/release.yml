@@ -64,6 +64,28 @@ jobs:
           Copy-Item "dist\PDFCompare\codigo-fonte-PDFCompare-$v.zip" release\
           Get-ChildItem release
 
+      - name: Texto da Release (CHANGELOG.md + downloads)
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          $text = Get-Content CHANGELOG.md -Raw -Encoding utf8
+          $m = [regex]::Match($text, "(?ms)^## \[$([regex]::Escape($v))\][^\n]*\n(.*?)(?=^## \[|\z)")
+          $notes = if ($m.Success) { $m.Groups[1].Value.Trim() } else { "" }
+          New-Item -ItemType Directory -Force notes | Out-Null
+          $dl = @"
+          ## Download
+          - **PDFCompare-Setup-$v.exe** — instalador para Windows (recomendado) / Windows installer (recommended)
+          - **PDFCompare-$v-portable.zip** — versão portátil, sem instalação / portable, no installation
+          - **codigo-fonte-PDFCompare-$v.zip** — código-fonte (AGPL-3.0) / source code
+
+          Na primeira execução o Windows SmartScreen pode avisar que o programa não é reconhecido: clique em **Mais informações › Executar assim mesmo**.
+          On first run, Windows SmartScreen may warn about an unrecognized app: click **More info › Run anyway**.
+
+          OCR (opcional): instale o [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki).
+          "@
+          ($dl + "`n`n" + $notes) | Set-Content notes/RELEASE.md -Encoding utf8
+          Get-Content notes/RELEASE.md | Select-Object -First 20
+
       - uses: actions/upload-artifact@v4
         with:
           name: PDFCompare-${{ steps.version.outputs.version }}
@@ -76,13 +98,4 @@ jobs:
           name: PDF Compare ${{ steps.version.outputs.version }}
           files: release/*
           generate_release_notes: true
-          body: |
-            ## Download
-            - **PDFCompare-Setup-${{ steps.version.outputs.version }}.exe** — instalador para Windows (recomendado) / Windows installer (recommended)
-            - **PDFCompare-${{ steps.version.outputs.version }}-portable.zip** — versão portátil, sem instalação / portable, no installation
-            - **codigo-fonte-PDFCompare-${{ steps.version.outputs.version }}.zip** — código-fonte (AGPL-3.0) / source code
-
-            Na primeira execução o Windows SmartScreen pode avisar que o programa não é reconhecido: clique em **Mais informações › Executar assim mesmo**.
-            On first run, Windows SmartScreen may warn about an unrecognized app: click **More info › Run anyway**.
-
-            OCR (opcional): instale o [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki).
+          body_path: notes/RELEASE.md

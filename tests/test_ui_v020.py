@@ -15,6 +15,11 @@ def _wait_index(qtbot, w):
     qtbot.waitUntil(lambda: not w.indexer.busy, timeout=10000)
 
 
+def _wait_diff(qtbot, w):
+    """A comparação roda em segundo plano: espera o primeiro lote ficar pronto."""
+    qtbot.waitUntil(lambda: not w.runner.busy and w.runner.done_count() > 0, timeout=10000)
+
+
 def _search(w, text):
     w.search_bar.edit.setText(text)
     w.search_bar.flush()
@@ -136,6 +141,7 @@ def test_text_diff_highlights_and_navigates(window, qtbot, versions):
     _wait_index(qtbot, window)
     assert window.act_diff.isEnabled()
     window.act_diff.trigger()
+    _wait_diff(qtbot, window)
     assert window.nav.total_diffs == 2
     assert "~1" in window.diff_label.text()
     assert (window.nav.page_for(0), window.nav.page_for(1)) == (1, 1)   # já foi para a 1ª diferença
@@ -150,6 +156,7 @@ def test_text_diff_waits_for_indexing(window, qtbot, versions):
     if window.indexer.busy:
         assert "aguardando" in window.diff_label.text()
     _wait_index(qtbot, window)
+    _wait_diff(qtbot, window)
     assert window.nav.total_diffs == 2
 
 
@@ -157,6 +164,7 @@ def test_text_diff_identical(window, qtbot, make_pdf):
     window.add_files([make_pdf("a.pdf", texts=["igual"]), make_pdf("b.pdf", texts=["igual"])])
     _wait_index(qtbot, window)
     window.act_diff.trigger()
+    _wait_diff(qtbot, window)
     assert "idêntico" in window.diff_label.text()
 
 

@@ -45,6 +45,14 @@ language (Portuguese if Windows is in Portuguese, English otherwise). To switch,
 | Go to the next match in **one** PDF | **▲ ▼** on the pane's yellow label |
 | See all matches in a list | **Match list** (Ctrl+Shift+F): snippet and page of each one; click to go there |
 | See text differences | **Compare text** (Ctrl+D). F7 / Shift+F7 go to the next / previous difference |
+| See differences in images, signatures, stamps or scanned pages | **Tools › Visual difference** (Ctrl+Shift+V): different areas get a dashed outline. Works with or without **Compare text**; sensitivity in **Settings › Comparison** |
+| Get the list of changes | **File › Difference report…** (Ctrl+Shift+R): page, text before and after, as PDF, HTML or CSV |
+| Choose the reference PDF | Right-click a PDF › **Use as comparison reference**, or **Tools › Comparison reference** |
+| Compare each version with the previous one | **Tools › Comparison reference › In a chain** (v1→v2→v3) |
+| Align pages by content | **Align by content** (Ctrl+Shift+L): added or removed pages appear with an empty pane next to them. A pane’s ◀ ▶ choose which page sits next to the reference; **Realign** undoes it |
+| See all pages in sequence | **Continuous scrolling** (Ctrl+Shift+C) |
+| Adjust the alignment in continuous scrolling | Drag the handle below a space; right-click › **Insert space here**, **Remove this space** or **Align this passage with…** (then click the matching passage in another PDF) |
+| Compare large PDFs in parts | Comparison runs in batches of pages (default: 50). **Compare next batch ▶** (F8) on the status bar; Shift+F8 goes back |
 | Highlight, underline or strike out text | Pick the tool on the **markup toolbar** (Highlight: Ctrl+H) and drag over the text |
 | Draw a rectangle, ellipse, line, arrow or freehand | Pick the tool and drag on the page |
 | Draw a polygon | Click each vertex and double-click to finish (Esc cancels) |
@@ -62,6 +70,7 @@ language (Portuguese if Windows is in Portuguese, English otherwise). To switch,
 | Zoom | Ctrl + mouse wheel, Ctrl++ / Ctrl+-, or the zoom list (width, whole page, %) |
 | Linked scrolling | **Linked scrolling** (on by default): scrolling one PDF scrolls the others |
 | See all shortcuts | F1 |
+| Know about new versions | The program shows a notice on the status bar (at most once a day; turn it off in **Edit › Settings… › General**). **Help › Check for updates now** checks right away |
 
 **Navigation model.** All PDFs share one position. A pane's buttons shift only that document.
 After that, moving all PDFs together keeps the offset, so you can compare versions with extra
@@ -76,8 +85,48 @@ hyphenated across lines. Scanned (image-only) PDFs become searchable with OCR on
 word by word. Default colors: **green** = added, **red** (struck through) = removed,
 **blue** = changed. The comparison ignores line and page breaks (text that only moved to another
 page is not a difference) and punctuation at the edges of words; case and accents count. The
-status bar shows the total per PDF. Colors can be changed in
-**Edit › Settings… › Comparison colors**.
+status bar shows the total per PDF. Colors can be changed in **Edit › Settings… › Comparison**.
+
+**Visual difference (optional).** Compares how pages look, pixel by pixel: renders both pages in
+grayscale, computes the difference and groups the changed areas. It finds what the text comparison
+cannot see (images, signatures, stamps, drawn tables, scanned PDFs without OCR). It is computed for the
+pages shown and kept in memory; sensitivity (1–100 %) and color are in **Settings › Comparison**.
+
+**Difference report.** Lists each text change (added, removed, changed) with the pages and the text
+before and after, for each comparison (reference or chain). **PDF** to send or print, **HTML** to open in
+a browser and **CSV** for Excel.
+
+**Reference and chain.** By default each PDF is compared with the first one. You can choose another
+PDF as the reference (a **Reference** badge in its header) or compare **in a chain**: the 2nd with
+the 1st, the 3rd with the 2nd, and so on.
+
+**Align by content.** The PDFs' text lines are compared in order and each page sits next to the
+reference page it shares the most lines with. Pages that exist in only one PDF appear with an empty
+pane, with an explanation, in the others. Heavily changed or text-less pages are paired by similarity
+and order. Manual adjustments (pane ◀ ▶, typed page, spaces and passages) are saved for those PDFs
+(by content) and come back when they are opened again; **Realign** undoes them all.
+
+**Continuous scrolling.** Shows pages one below the other (**View › Continuous scrolling**). With
+content alignment on, **alignment spaces** the size of the added or removed content are inserted
+where it would be, so matching passages sit at the same height in every PDF. When pages break at
+different points, spaces are also inserted at the breaks. When the automatic alignment gets it wrong
+(e.g. scanned PDFs), drag a space's handle, insert or remove a space, or use **Align this passage
+with…**; a manually adjusted space lasts until the next matching passage.
+
+**Batch comparison.** With large PDFs the comparison is split into batches of pages of the first
+PDF (the others follow each pane's alignment). The status bar shows "Batch 2 of 8 · pages 51–100",
+with **◀** and **Compare next batch ▶** (F8). It runs in the background, with progress and a
+**Cancel** button, without freezing the program. In **Edit › Settings… › Comparison**:
+- **Pages per batch** (or "All at once");
+- **Compare the next batch:** when you click, or automatically in the background, choosing how
+  many batches to prepare ahead and whether to pause while you scroll or add marks;
+- **When the alignment changes** (pane ◀ ▶, typed page or Realign): the program waits until you
+  finish adjusting and shows **Recompare** on the batch bar; until then the current comparison
+  stays on screen. You can also choose to recompare automatically. Batches with the same pages
+  come from the cache, and going to the next difference (F7) never redoes the comparison;
+- **Saved comparisons:** compared batches are stored (`%APPDATA%\PDFCompare\PDF Compare\comparacoes`),
+  identified by the PDFs' content, and reused when the same files are opened again. Unused ones
+  are deleted after N days (or never); **Clear cache now** deletes everything.
 
 **Marks.** Highlights, shapes, text, stamps and notes are stored in the program's data folder
 (`%APPDATA%\PDFCompare\PDF Compare\anotacoes`), one file per document, identified by the PDF's
@@ -146,7 +195,7 @@ copy the whole `dist\PDFCompare` folder.
 With [Inno Setup 6](https://jrsoftware.org/isinfo.php) installed, after `build.ps1`:
 
 ```bash
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=0.2.0 installer.iss
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=0.3.0 installer.iss
 ```
 
 The installer goes to `dist\installer\`.
@@ -156,11 +205,12 @@ The installer goes to `dist\installer\`.
 GitHub builds everything (`.github/workflows/release.yml`): tests, executable, installer,
 portable package and source code. To release:
 
-1. Update `__version__` in `app/__init__.py` and merge into `main`.
+1. Update `__version__` in `app/__init__.py`, write the changes in `CHANGELOG.md` (a `## [version]`
+   section, which becomes the Release text) and merge into `main`.
 2. Create and push the tag with the same number:
    ```bash
-   git tag v0.2.0
-   git push origin v0.2.0
+   git tag v0.3.0
+   git push origin v0.3.0
    ```
 3. A few minutes later the Release appears under **Releases** with the files to download.
    If the tag does not match `__version__`, the workflow stops with an error.
@@ -179,6 +229,13 @@ app/
   services/search.py       word and phrase search
   services/indexer.py      background indexing without freezing the UI (and OCR, if on)
   services/text_diff.py    word-by-word text comparison
+  services/diff_batches.py page batches and on-disk cache of comparisons
+  services/batch_runner.py runs batches in the background
+  services/content_align.py content alignment (matching pages and lines) and manual adjustments
+  services/strip_layout.py continuous-scrolling layout with alignment spaces
+  services/visual_diff.py  visual (pixel-by-pixel) difference between pages
+  services/report.py       difference report as PDF, HTML and CSV
+  services/updates.py      new-version notice (checks the latest GitHub Release)
   services/annotations.py  marks (highlights, shapes, text, stamps, notes) kept outside the PDF; annotated PDF
   services/preferences.py  comparison colors and default mark style
   services/export.py       side-by-side and current-page export (PDF/PNG)
@@ -187,6 +244,7 @@ app/
   i18n.py                  UI language (tr); i18n_en.py has the English translations
   ui/main_window.py        window, menus, toolbars, grid, drag and drop
   ui/pane.py               one PDF's pane (rendering, marks, controls)
+  ui/continuous.py         continuous-scrolling canvas (pages cut at the spaces)
   ui/search_bar.py         search bar
   ui/results_panel.py      match list (snippet + page)
   ui/marks_panel.py        marks list with filters
@@ -218,7 +276,8 @@ samples/                   sample PDFs
 - Preferences (zoom, search options, window size, last folder, side lists, recent files, OCR,
   mark colors and style) are saved between runs.
 - Text comparison works on two levels (lines, then words inside the differing lines) with
-  `difflib`, so it stays fast on long documents.
+  `difflib`, so it stays fast on long documents. It runs in a worker thread on the already
+  extracted words (never PyMuPDF), batch by batch, with results cached on disk.
 - Source-code strings are written in Portuguese and go through `tr()`; English translations
   are in `app/i18n_en.py`. `tests/test_i18n.py` fails if any string is left untranslated.
 - All core logic (differences, marks, export, sessions, OCR) lives in `app/services`, without

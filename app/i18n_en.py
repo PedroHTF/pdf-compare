@@ -107,7 +107,6 @@ EN = {
     "Ocorrência anterior": "Previous match",
     "Ir para a ocorrência anterior em cada PDF": "Go to the previous match in each PDF",
     "Comparar &texto": "Compare &text",
-    "Destacar as diferenças de texto em relação ao primeiro PDF": "Highlight text differences from the first PDF",
     "Próxima diferença": "Next difference",
     "Ir para a próxima diferença de texto em cada PDF": "Go to the next text difference in each PDF",
     "Diferença anterior": "Previous difference",
@@ -268,7 +267,6 @@ EN = {
 
     # --- comparação de texto --------------------------------------------------------
     "Comparando texto… aguardando a leitura dos PDFs": "Comparing text… waiting for the PDFs to be read",
-    "Texto idêntico ao do 1º PDF": "Text identical to the 1st PDF",
     "Diferenças em relação a {name} — {parts}": "Differences from {name} — {parts}",
     "Nenhuma diferença de texto para navegar.": "No text differences to navigate.",
 
@@ -401,8 +399,6 @@ EN = {
         'Outline and text color',
     'Cor do destaque':
         'Highlight color',
-    'Cores da comparação':
-        'Comparison colors',
     'Desfazer / refazer alterações nas marcações':
         'Undo / redo changes to marks',
     'Desfazer a última alteração nas marcações':
@@ -535,4 +531,291 @@ EN = {
         'p. {page}  —  {kind}',
     '{n} marcação(ões). Clique para ir até ela.':
         '{n} mark(s). Click to go to it.',
+    # --- v0.3.0: comparação em lotes ---
+    ' dias':
+        ' days',
+    ' páginas':
+        ' pages',
+    'Ao clicar em “Comparar próximo lote”':
+        'When I click “Compare next batch”',
+    'Apagar as não usadas após':
+        'Delete unused results after',
+    'Automaticamente, em segundo plano':
+        'Automatically, in the background',
+    'Cancelar a comparação em andamento (os lotes prontos continuam)':
+        'Cancel the comparison in progress (finished batches are kept)',
+    'Comparando texto…':
+        'Comparing text…',
+    'Comparar este lote':
+        'Compare this batch',
+    'Comparar o próximo lote':
+        'Compare the next batch',
+    'Comparar o próximo lote de páginas e ir até ele':
+        'Compare the next batch of pages and go to it',
+    'Comparar próximo lote':
+        'Compare next batch',
+    'Comparar próximo lote ▶':
+        'Compare next batch ▶',
+    'Comparação':
+        'Comparison',
+    'Comparação cancelada. Os lotes já comparados continuam valendo.':
+        'Comparison canceled. Batches already compared are kept.',
+    'Comparação em lotes':
+        'Batch comparison',
+    'Comparações salvas (cache)':
+        'Saved comparisons (cache)',
+    'Cores':
+        'Colors',
+    'Limpar cache agora':
+        'Clear cache now',
+    'Lote ainda não comparado — use “Comparar este lote” (F8)':
+        'Batch not compared yet — use “Compare this batch” (F8)',
+    'Lote anterior':
+        'Previous batch',
+    'Lote {n} de {total} · páginas {first}–{last}':
+        'Batch {n} of {total} · pages {first}–{last}',
+    'Lotes já comparados são reaproveitados ao reabrir os mesmos PDFs.':
+        'Batches already compared are reused when the same PDFs are opened again.',
+    'Lotes preparados à frente':
+        'Batches prepared ahead',
+    'Nunca':
+        'Never',
+    'Pausar enquanto eu rolo as páginas ou faço marcações':
+        'Pause while I scroll pages or add marks',
+    'Páginas por lote':
+        'Pages per batch',
+    'Todos':
+        'All',
+    'Tudo de uma vez':
+        'All at once',
+    'Voltar ao lote de páginas anterior':
+        'Go back to the previous batch of pages',
+    '{n} resultado(s) salvos · {size}':
+        '{n} saved result(s) · {size}',
+    'comparando…':
+        'comparing…',
+    'não comparado':
+        'not compared',
+    '{done} de {total} lotes comparados':
+        '{done} of {total} batches compared',
+    'Próximo lote ▶':
+        'Next batch ▶',
+    'Recomparar':
+        'Recompare',
+    'Refazer a comparação em lotes com o alinhamento atual dos PDFs':
+        'Redo the batch comparison with the current alignment of the PDFs',
+    'Mostrar “Recomparar” e esperar o meu clique':
+        'Show “Recompare” and wait for my click',
+    'Recomparar automaticamente':
+        'Recompare automatically',
+    'O que fazer quando você ajusta o alinhamento de um PDF (◀ ▶ do painel, página digitada ou Realinhar)':
+        'What to do when you adjust a PDF’s alignment (pane ◀ ▶, typed page or Realign)',
+    'Quando o alinhamento mudar':
+        'When the alignment changes',
+    'O alinhamento mudou. Clique em “Recomparar” para refazer os lotes com o novo alinhamento.':
+        'The alignment changed. Click “Recompare” to redo the batches with the new alignment.',
+    'alinhamento mudou':
+        'alignment changed',
+    '&Referência da comparação':
+        'Comparison &reference',
+    'Comparar em cadeia (cada PDF com o anterior)':
+        'Compare in a chain (each PDF with the previous one)',
+    'Comparar o 2º PDF com o 1º, o 3º com o 2º, e assim por diante':
+        'Compare the 2nd PDF with the 1st, the 3rd with the 2nd, and so on',
+    'Comparação com a referência.':
+        'Comparing with the reference.',
+    'Comparação em cadeia: cada PDF com o anterior.':
+        'Chain comparison: each PDF with the previous one.',
+    'Comparação em cadeia: este PDF é comparado com o anterior':
+        'Chain comparison: this PDF is compared with the previous one',
+    'Comparação em cadeia: início':
+        'Chain comparison: start',
+    'Em &cadeia (cada PDF com o anterior)':
+        'In a &chain (each PDF with the previous one)',
+    'Em cadeia (cada PDF com o anterior) — {parts}':
+        'In a chain (each PDF with the previous one) — {parts}',
+    'Os outros PDFs são comparados com este. Clique com o botão direito em outro PDF para mudar a referência.':
+        'The other PDFs are compared with this one. Right-click another PDF to change the reference.',
+    'Referência':
+        'Reference',
+    'Referência da comparação: {name}':
+        'Comparison reference: {name}',
+    'Texto idêntico ao da referência ({name})':
+        'Text identical to the reference ({name})',
+    'Texto idêntico em todos os PDFs':
+        'Text identical in all PDFs',
+    'Usar como referência da comparação':
+        'Use as comparison reference',
+    '{n}º':
+        '#{n}',
+    'Alinhar por &conteúdo':
+        'Align by &content',
+    'Mostrar lado a lado as páginas com o mesmo conteúdo, compensando páginas incluídas ou removidas':
+        'Show pages with the same content side by side, compensating for added or removed pages',
+    'Alinhar por conteúdo':
+        'Align by content',
+    'Desfazer os ajustes manuais do alinhamento por conteúdo (Ctrl+L)':
+        'Undo manual adjustments to the content alignment (Ctrl+L)',
+    'Ajustes manuais do alinhamento desfeitos.':
+        'Manual alignment adjustments undone.',
+    'Sem página correspondente neste PDF.\nO conteúdo dos outros PDFs nesta posição foi incluído neles ou removido deste.':
+        'No matching page in this PDF.\nThe content of the other PDFs at this position was added to them or removed from this one.',
+    'Alinhando por conteúdo… aguardando a leitura dos PDFs.':
+        'Aligning by content… waiting for the PDFs to be read.',
+    'Alinhado por conteúdo: {extra} posição(ões) com páginas incluídas e {missing} com páginas removidas em relação a {name}.':
+        'Aligned by content: {extra} position(s) with added pages and {missing} with removed pages relative to {name}.',
+    'Página {page} de {name} fixada ao lado da página {ref} de {ref_name}. Realinhar desfaz.':
+        'Page {page} of {name} pinned next to page {ref} of {ref_name}. Realign undoes it.',
+    '(ajustado)':
+        '(adjusted)',
+    'espaço de alinhamento · {pt} pt':
+        'alignment space · {pt} pt',
+    'Rolagem &contínua':
+        '&Continuous scrolling',
+    'Mostrar todas as páginas em sequência, em vez de uma de cada vez':
+        'Show all pages in sequence instead of one at a time',
+    'Contínua':
+        'Continuous',
+    'Inserir espaço aqui':
+        'Insert space here',
+    'Remover este espaço':
+        'Remove this space',
+    'Alinhar este trecho com…':
+        'Align this passage with…',
+    'Depois, clique no trecho correspondente em outro PDF':
+        'Then click the matching passage in another PDF',
+    'Alinhamento de trecho cancelado.':
+        'Passage alignment canceled.',
+    'Espaço ajustado. Realinhar desfaz os ajustes manuais.':
+        'Space adjusted. Realign undoes manual adjustments.',
+    'Espaço inserido. Arraste a alça embaixo dele para ajustar a altura.':
+        'Space inserted. Drag the handle below it to adjust the height.',
+    'Espaço removido. Realinhar desfaz os ajustes manuais.':
+        'Space removed. Realign undoes manual adjustments.',
+    'Agora clique no trecho correspondente em outro PDF (Esc cancela).':
+        'Now click the matching passage in another PDF (Esc cancels).',
+    'Trechos alinhados. Realinhar desfaz os ajustes manuais.':
+        'Passages aligned. Realign undoes manual adjustments.',
+    'Role qualquer PDF: os outros acompanham  ·  botão direito: inserir espaço ou alinhar um trecho  ·  arraste a alça de um espaço para ajustar':
+        'Scroll any PDF: the others follow  ·  right-click: insert space or align a passage  ·  drag a space handle to adjust',
+    '◀ ▶ ou setas do teclado: avançam todos juntos  ·  ◀ ▶ de um painel: escolhem qual página dele fica ao lado da referência':
+        '◀ ▶ or arrow keys: move all together  ·  a pane’s ◀ ▶: choose which of its pages sits next to the reference',
+    'Rolagem contínua':
+        'Continuous scrolling',
+    'Antes':
+        'Before',
+    'Base':
+        'Base',
+    'Comparado':
+        'Compared',
+    'Depois':
+        'After',
+    'Gerado em {date} pelo PDF Compare':
+        'Generated on {date} by PDF Compare',
+    'PDFs':
+        'PDFs',
+    'Pág.':
+        'Page',
+    'Página (base)':
+        'Page (base)',
+    'Página (comparado)':
+        'Page (compared)',
+    'Relatório de diferenças':
+        'Difference report',
+    'Texto (base)':
+        'Text (base)',
+    'Texto (comparado)':
+        'Text (compared)',
+    'Texto idêntico.':
+        'Identical text.',
+    'Tipo':
+        'Type',
+    '{added} incluído(s) · {removed} removido(s) · {changed} alterado(s)':
+        '{added} added · {removed} removed · {changed} changed',
+    'Diferença visual':
+        'Visual difference',
+    'Diferença visual (pixel a pixel)':
+        'Visual difference (pixel by pixel)',
+    'Mais alto: marca diferenças menores (e mais ruído em PDFs escaneados)':
+        'Higher: marks smaller differences (and more noise in scanned PDFs)',
+    'Sensibilidade':
+        'Sensitivity',
+    'Ligue em Ferramentas › Diferença visual. Encontra mudanças em imagens, assinaturas, carimbos e PDFs escaneados.':
+        'Turn it on in Tools › Visual difference. Finds changes in images, signatures, stamps and scanned PDFs.',
+    '&Relatório de diferenças…':
+        'Difference &report…',
+    'Salvar a lista de mudanças entre os PDFs (página, texto antes e depois) em PDF, HTML ou CSV':
+        'Save the list of changes between the PDFs (page, text before and after) as PDF, HTML or CSV',
+    'Destacar as diferenças de texto em relação à referência':
+        'Highlight text differences relative to the reference',
+    'Diferença &visual':
+        '&Visual difference',
+    'Destacar áreas com aparência diferente, pixel a pixel (imagens, assinaturas, carimbos, páginas escaneadas). Funciona com ou sem a comparação de texto.':
+        'Highlight areas that look different, pixel by pixel (images, signatures, stamps, scanned pages). Works with or without the text comparison.',
+    'Diferença visual ligada: áreas diferentes aparecem com contorno tracejado. A sensibilidade fica em Configurações › Comparação.':
+        'Visual difference on: different areas get a dashed outline. Sensitivity is in Settings › Comparison.',
+    'Diferença visual ligada':
+        'Visual difference on',
+    'Diferença visual: {n} área(s) nas páginas à vista':
+        'Visual difference: {n} area(s) on the pages shown',
+    'Áreas com aparência diferente (imagens, assinaturas, carimbos, páginas escaneadas), com contorno tracejado.':
+        'Areas that look different (images, signatures, stamps, scanned pages), with a dashed outline.',
+    'Aguarde terminar a leitura dos PDFs para gerar o relatório.':
+        'Wait for the PDFs to finish loading to generate the report.',
+    'relatorio_de_diferencas.pdf':
+        'difference_report.pdf',
+    'Salvar relatório de diferenças':
+        'Save difference report',
+    'Referência: {name}':
+        'Reference: {name}',
+    'Relatório não salvo':
+        'Report not saved',
+    'Não foi possível salvar o relatório: {error}':
+        'Could not save the report: {error}',
+    'Relatório salvo ({n} mudança(s)): {path}':
+        'Report saved ({n} change(s)): {path}',
+    'Em cadeia (cada PDF com o anterior)':
+        'In a chain (each PDF with the previous one)',
+    'Visual':
+        'Visual',
+    '&Verificar atualizações agora':
+        'Check for &updates now',
+    'Consultar no GitHub se há uma versão mais nova do PDF Compare':
+        'Check GitHub for a newer version of PDF Compare',
+    'Baixar':
+        'Download',
+    'Abrir a página da nova versão no navegador (downloads e novidades)':
+        'Open the new version page in the browser (downloads and release notes)',
+    'Ignorar esta versão':
+        'Skip this version',
+    'Esconder até a próxima vez que o programa abrir':
+        'Hide until the program opens again',
+    'Verificando atualizações…':
+        'Checking for updates…',
+    'Verificar atualizações':
+        'Check for updates',
+    'Não foi possível consultar o GitHub agora. Verifique a conexão e tente de novo.':
+        'Could not reach GitHub right now. Check the connection and try again.',
+    'Você já tem a versão mais recente ({version}).':
+        'You already have the latest version ({version}).',
+    'PDF Compare {version} disponível':
+        'PDF Compare {version} available',
+    'Nova versão disponível':
+        'New version available',
+    'O PDF Compare {new} está disponível (você tem a {current}).':
+        'PDF Compare {new} is available (you have {current}).',
+    'A página da versão tem o instalador, a versão portátil e as novidades.':
+        'The version page has the installer, the portable version and the release notes.',
+    'Abrir página da versão':
+        'Open version page',
+    'Agora não':
+        'Not now',
+    'Você não será avisado da versão {version} de novo. Ajuda › Verificar atualizações agora continua mostrando.':
+        'You won’t be notified about version {version} again. Help › Check for updates now still shows it.',
+    'Verificar atualizações ao abrir (no máximo uma vez por dia)':
+        'Check for updates on startup (at most once a day)',
+    'Só consulta no GitHub o número da última versão. Nada é baixado ou instalado sem você pedir.':
+        'Only asks GitHub for the latest version number. Nothing is downloaded or installed unless you ask.',
+    'Atualizações':
+        'Updates',
 }

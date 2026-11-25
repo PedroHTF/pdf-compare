@@ -40,6 +40,7 @@ class Token:
     text: str
     rects: List[Rect]
     line: int = 0   # identificador da linha na página (bloco e linha do PyMuPDF)
+    raw: str = ""   # texto como está no PDF, com pontuação (para o relatório de diferenças)
 
 
 def extract_tokens(page: fitz.Page, textpage: "fitz.TextPage | None" = None) -> List[Token]:
@@ -65,10 +66,10 @@ def extract_tokens(page: fitz.Page, textpage: "fitz.TextPage | None" = None) -> 
         if nxt is not None and ends_line and len(text) > 1 and text.endswith("-"):
             carry = Token(text, rects, block * 10000 + line)  # "docu-" + "mento" na linha seguinte
             continue
-        tokens.append(Token(clean(text), rects, block * 10000 + line))
+        tokens.append(Token(clean(text), rects, block * 10000 + line, text))
 
     if carry is not None:
-        tokens.append(Token(clean(carry.text), carry.rects, carry.line))
+        tokens.append(Token(clean(carry.text), carry.rects, carry.line, carry.text))
     return tokens
 
 
