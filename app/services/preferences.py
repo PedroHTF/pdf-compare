@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from typing import Dict, Optional, Tuple
 
 from app.services.annotations import HIGHLIGHT_COLOR, SHAPE_COLOR, Color
+from app.services.diff_batches import DEFAULT_BATCH_SIZE, DEFAULT_RETENTION_DAYS
 from app.services.text_diff import ADDED, CHANGED, REMOVED
 
 DEFAULT_DIFF_COLORS: Dict[str, Color] = {
@@ -47,6 +48,27 @@ class MarkStyle:
 
 DEFAULT_STYLE = MarkStyle()
 
+NEXT_ON_CLICK = "click"     # o próximo lote só é comparado quando o usuário pede
+NEXT_AUTO = "auto"          # os próximos lotes são comparados em segundo plano
+LOOKAHEAD_ALL = 0
+REALIGN_ON_CLICK = "click"   # alinhamento mudou: mostra "Recomparar" e espera o clique
+REALIGN_AUTO = "auto"        # alinhamento mudou: recompara sozinho (depois de uma pausa)
+
+
+@dataclass(frozen=True)
+class CompareSettings:
+    """Comparação em lotes e cache dos resultados."""
+
+    batch_size: int = DEFAULT_BATCH_SIZE    # páginas por lote; 0 = tudo de uma vez
+    next_mode: str = NEXT_ON_CLICK
+    lookahead: int = 1                      # lotes adiantados no modo automático; 0 = todos
+    pause_while_busy: bool = True           # segundo plano espera o usuário parar de rolar/anotar
+    cache_days: int = DEFAULT_RETENTION_DAYS    # 0 = nunca apagar
+    realign_mode: str = REALIGN_ON_CLICK
+
+
+DEFAULT_COMPARE = CompareSettings()
+
 
 class Preferences:
     def __init__(self, settings) -> None:
@@ -61,6 +83,38 @@ class Preferences:
         for kind, color in colors.items():
             if kind in DEFAULT_DIFF_COLORS:
                 self.settings.setValue(f"colors/{kind}", to_hex(color))
+
+    # --- comparação em lotes -------------------------------------------------------
+    def _int(self, key: str, default: int, low: int, high: int) -> int:
+        try:
+            value = int(float(self.settings.value(key, default)))
+        except (TypeError, ValueError):
+            return default
+        return min(max(value, low), high)
+
+    def compare_settings(self) -> CompareSettings:
+        d = DEFAULT_COMPARE
+        mode = str(self.settings.value("compare/next_mode", d.next_mode))
+        pause = self.settings.value("compare/pause_while_busy", d.pause_while_busy)
+        if isinstance(pause, str):
+            pause = pause.lower() in ("true", "1", "yes")
+        realign = str(self.settings.value("compare/realign_mode", d.realign_mode))
+        return CompareSettings(
+            realign_mode=realign if realign in (REALIGN_ON_CLICK, REALIGN_AUTO) else d.realign_mode,
+            batch_size=self._int("compare/batch_size", d.batch_size, 0, 100000),
+            next_mode=mode if mode in (NEXT_ON_CLICK, NEXT_AUTO) else d.next_mode,
+            lookahead=self._int("compare/lookahead", d.lookahead, 0, 1000),
+            pause_while_busy=bool(pause),
+            cache_days=self._int("compare/cache_days", d.cache_days, 0, 3650),
+        )
+
+    def set_compare_settings(self, c: CompareSettings) -> None:
+        self.settings.setValue("compare/batch_size", c.batch_size)
+        self.settings.setValue("compare/next_mode", c.next_mode)
+        self.settings.setValue("compare/lookahead", c.lookahead)
+        self.settings.setValue("compare/pause_while_busy", c.pause_while_busy)
+        self.settings.setValue("compare/cache_days", c.cache_days)
+        self.settings.setValue("compare/realign_mode", c.realign_mode)
 
     # --- estilo das marcações -------------------------------------------------------
     def _float(self, key: str, default: float, low: float, high: float) -> float:

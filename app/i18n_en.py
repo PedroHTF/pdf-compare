@@ -401,8 +401,6 @@ EN = {
         'Outline and text color',
     'Cor do destaque':
         'Highlight color',
-    'Cores da comparação':
-        'Comparison colors',
     'Desfazer / refazer alterações nas marcações':
         'Undo / redo changes to marks',
     'Desfazer a última alteração nas marcações':
@@ -535,4 +533,89 @@ EN = {
         'p. {page}  —  {kind}',
     '{n} marcação(ões). Clique para ir até ela.':
         '{n} mark(s). Click to go to it.',
+    # --- v0.3.0: comparação em lotes ---
+    ' dias':
+        ' days',
+    ' páginas':
+        ' pages',
+    'Ao clicar em “Comparar próximo lote”':
+        'When I click “Compare next batch”',
+    'Apagar as não usadas após':
+        'Delete unused results after',
+    'Automaticamente, em segundo plano':
+        'Automatically, in the background',
+    'Cancelar a comparação em andamento (os lotes prontos continuam)':
+        'Cancel the comparison in progress (finished batches are kept)',
+    'Comparando texto…':
+        'Comparing text…',
+    'Comparar este lote':
+        'Compare this batch',
+    'Comparar o próximo lote':
+        'Compare the next batch',
+    'Comparar o próximo lote de páginas e ir até ele':
+        'Compare the next batch of pages and go to it',
+    'Comparar próximo lote':
+        'Compare next batch',
+    'Comparar próximo lote ▶':
+        'Compare next batch ▶',
+    'Comparação':
+        'Comparison',
+    'Comparação cancelada. Os lotes já comparados continuam valendo.':
+        'Comparison canceled. Batches already compared are kept.',
+    'Comparação em lotes':
+        'Batch comparison',
+    'Comparações salvas (cache)':
+        'Saved comparisons (cache)',
+    'Cores':
+        'Colors',
+    'Limpar cache agora':
+        'Clear cache now',
+    'Lote ainda não comparado — use “Comparar este lote” (F8)':
+        'Batch not compared yet — use “Compare this batch” (F8)',
+    'Lote anterior':
+        'Previous batch',
+    'Lote {n} de {total} · páginas {first}–{last}':
+        'Batch {n} of {total} · pages {first}–{last}',
+    'Lotes já comparados são reaproveitados ao reabrir os mesmos PDFs.':
+        'Batches already compared are reused when the same PDFs are opened again.',
+    'Lotes preparados à frente':
+        'Batches prepared ahead',
+    'Nunca':
+        'Never',
+    'Pausar enquanto eu rolo as páginas ou faço marcações':
+        'Pause while I scroll pages or add marks',
+    'Páginas por lote':
+        'Pages per batch',
+    'Todos':
+        'All',
+    'Tudo de uma vez':
+        'All at once',
+    'Voltar ao lote de páginas anterior':
+        'Go back to the previous batch of pages',
+    '{n} resultado(s) salvos · {size}':
+        '{n} saved result(s) · {size}',
+    'comparando…':
+        'comparing…',
+    'não comparado':
+        'not compared',
+    '{done} de {total} lotes comparados':
+        '{done} of {total} batches compared',
+    'Próximo lote ▶':
+        'Next batch ▶',
+    'Recomparar':
+        'Recompare',
+    'Refazer a comparação em lotes com o alinhamento atual dos PDFs':
+        'Redo the batch comparison with the current alignment of the PDFs',
+    'Mostrar “Recomparar” e esperar o meu clique':
+        'Show “Recompare” and wait for my click',
+    'Recomparar automaticamente':
+        'Recompare automatically',
+    'O que fazer quando você ajusta o alinhamento de um PDF (◀ ▶ do painel, página digitada ou Realinhar)':
+        'What to do when you adjust a PDF’s alignment (pane ◀ ▶, typed page or Realign)',
+    'Quando o alinhamento mudar':
+        'When the alignment changes',
+    'O alinhamento mudou. Clique em “Recomparar” para refazer os lotes com o novo alinhamento.':
+        'The alignment changed. Click “Recompare” to redo the batches with the new alignment.',
+    'alinhamento mudou':
+        'alignment changed',
 }

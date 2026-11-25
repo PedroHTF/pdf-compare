@@ -45,6 +45,7 @@ language (Portuguese if Windows is in Portuguese, English otherwise). To switch,
 | Go to the next match in **one** PDF | **▲ ▼** on the pane's yellow label |
 | See all matches in a list | **Match list** (Ctrl+Shift+F): snippet and page of each one; click to go there |
 | See text differences | **Compare text** (Ctrl+D). F7 / Shift+F7 go to the next / previous difference |
+| Compare large PDFs in parts | Comparison runs in batches of pages (default: 50). **Compare next batch ▶** (F8) on the status bar; Shift+F8 goes back |
 | Highlight, underline or strike out text | Pick the tool on the **markup toolbar** (Highlight: Ctrl+H) and drag over the text |
 | Draw a rectangle, ellipse, line, arrow or freehand | Pick the tool and drag on the page |
 | Draw a polygon | Click each vertex and double-click to finish (Esc cancels) |
@@ -76,8 +77,22 @@ hyphenated across lines. Scanned (image-only) PDFs become searchable with OCR on
 word by word. Default colors: **green** = added, **red** (struck through) = removed,
 **blue** = changed. The comparison ignores line and page breaks (text that only moved to another
 page is not a difference) and punctuation at the edges of words; case and accents count. The
-status bar shows the total per PDF. Colors can be changed in
-**Edit › Settings… › Comparison colors**.
+status bar shows the total per PDF. Colors can be changed in **Edit › Settings… › Comparison**.
+
+**Batch comparison.** With large PDFs the comparison is split into batches of pages of the first
+PDF (the others follow each pane's alignment). The status bar shows "Batch 2 of 8 · pages 51–100",
+with **◀** and **Compare next batch ▶** (F8). It runs in the background, with progress and a
+**Cancel** button, without freezing the program. In **Edit › Settings… › Comparison**:
+- **Pages per batch** (or "All at once");
+- **Compare the next batch:** when you click, or automatically in the background, choosing how
+  many batches to prepare ahead and whether to pause while you scroll or add marks;
+- **When the alignment changes** (pane ◀ ▶, typed page or Realign): the program waits until you
+  finish adjusting and shows **Recompare** on the batch bar; until then the current comparison
+  stays on screen. You can also choose to recompare automatically. Batches with the same pages
+  come from the cache, and going to the next difference (F7) never redoes the comparison;
+- **Saved comparisons:** compared batches are stored (`%APPDATA%\PDFCompare\PDF Compare\comparacoes`),
+  identified by the PDFs' content, and reused when the same files are opened again. Unused ones
+  are deleted after N days (or never); **Clear cache now** deletes everything.
 
 **Marks.** Highlights, shapes, text, stamps and notes are stored in the program's data folder
 (`%APPDATA%\PDFCompare\PDF Compare\anotacoes`), one file per document, identified by the PDF's
@@ -179,6 +194,8 @@ app/
   services/search.py       word and phrase search
   services/indexer.py      background indexing without freezing the UI (and OCR, if on)
   services/text_diff.py    word-by-word text comparison
+  services/diff_batches.py page batches and on-disk cache of comparisons
+  services/batch_runner.py runs batches in the background
   services/annotations.py  marks (highlights, shapes, text, stamps, notes) kept outside the PDF; annotated PDF
   services/preferences.py  comparison colors and default mark style
   services/export.py       side-by-side and current-page export (PDF/PNG)
@@ -218,7 +235,8 @@ samples/                   sample PDFs
 - Preferences (zoom, search options, window size, last folder, side lists, recent files, OCR,
   mark colors and style) are saved between runs.
 - Text comparison works on two levels (lines, then words inside the differing lines) with
-  `difflib`, so it stays fast on long documents.
+  `difflib`, so it stays fast on long documents. It runs in a worker thread on the already
+  extracted words (never PyMuPDF), batch by batch, with results cached on disk.
 - Source-code strings are written in Portuguese and go through `tr()`; English translations
   are in `app/i18n_en.py`. `tests/test_i18n.py` fails if any string is left untranslated.
 - All core logic (differences, marks, export, sessions, OCR) lives in `app/services`, without

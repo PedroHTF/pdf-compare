@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from app.services.text_index import DocumentIndex, Rect, fold
 
@@ -40,11 +40,17 @@ class _Word:
     rects: Tuple[Rect, ...]
 
 
-def _words(index: DocumentIndex, case_sensitive: bool, ignore_accents: bool) -> Tuple[List[_Word], List[Tuple[int, int]]]:
-    """Palavras do documento e os intervalos [início, fim) de cada linha."""
+PageRange = Tuple[int, int]   # páginas [início, fim)
+
+
+def _words(index: DocumentIndex, case_sensitive: bool, ignore_accents: bool,
+           pages: Optional[PageRange] = None) -> Tuple[List[_Word], List[Tuple[int, int]]]:
+    """Palavras do documento (ou do intervalo de páginas) e os intervalos [início, fim) de cada linha."""
     words: List[_Word] = []
     lines: List[Tuple[int, int]] = []
-    for page_no, tokens in enumerate(index.pages):
+    first, last = pages if pages is not None else (0, len(index.pages))
+    for page_no in range(max(first, 0), min(last, len(index.pages))):
+        tokens = index.pages[page_no]
         start = len(words)
         last_line = None
         for token in tokens:
@@ -77,10 +83,15 @@ def diff_pair(
     other: DocumentIndex,
     case_sensitive: bool = True,
     ignore_accents: bool = False,
+    ref_pages: Optional[PageRange] = None,
+    other_pages: Optional[PageRange] = None,
 ) -> Tuple[List[DiffMark], List[DiffMark]]:
-    """Diferenças entre dois documentos: (marcas na referência, marcas no outro)."""
-    wa, la = _words(ref, case_sensitive, ignore_accents)
-    wb, lb = _words(other, case_sensitive, ignore_accents)
+    """Diferenças entre dois documentos: (marcas na referência, marcas no outro).
+
+    Com `ref_pages` / `other_pages`, compara só esses intervalos (comparação em lotes).
+    """
+    wa, la = _words(ref, case_sensitive, ignore_accents, ref_pages)
+    wb, lb = _words(other, case_sensitive, ignore_accents, other_pages)
     keys_a = [" ".join(w.text for w in wa[s:e]) for s, e in la]
     keys_b = [" ".join(w.text for w in wb[s:e]) for s, e in lb]
 
@@ -126,14 +137,26 @@ def diff_documents(indexes: Sequence[DocumentIndex], **options) -> List[List[Dif
     """Compara cada documento com o primeiro. Devolve as marcas de cada um, em ordem de leitura."""
     if len(indexes) < 2:
         return [[] for _ in indexes]
-    result: List[List[DiffMark]] = [[] for _ in indexes]
+    pairs = [diff_pair(indexes[0], indexes[i], **options) for i in range(1, len(indexes))]
+    return merge_pairs(pairs)
+
+
+def reading_order(mark: DiffMark) -> tuple:
+    return (mark.page, mark.rects[0][1], mark.rects[0][0]) if mark.rects else (mark.page, 0, 0)
+
+
+def merge_pairs(pairs: Sequence[Tuple[Sequence[DiffMark], Sequence[DiffMark]]]) -> List[List[DiffMark]]:
+    """Junta os resultados de cada par (referência, outro) em uma lista de marcas por documento.
+
+    Uma palavra da referência marcada em vários pares aparece uma vez só.
+    """
+    result: List[List[DiffMark]] = [[] for _ in range(len(pairs) + 1)]
     ref_marks: Dict[Tuple[int, Tuple[Rect, ...]], DiffMark] = {}
-    for i in range(1, len(indexes)):
-        marks_ref, marks_other = diff_pair(indexes[0], indexes[i], **options)
+    for i, (marks_ref, marks_other) in enumerate(pairs, start=1):
         for mark in marks_ref:
             ref_marks.setdefault((mark.page, mark.rects), mark)
-        result[i] = marks_other
-    result[0] = sorted(ref_marks.values(), key=lambda m: (m.page, m.rects[0][1], m.rects[0][0]))
+        result[i] = sorted(marks_other, key=reading_order)
+    result[0] = sorted(ref_marks.values(), key=reading_order)
     return result
 
 
