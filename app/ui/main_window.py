@@ -172,6 +172,8 @@ class MainWindow(QMainWindow):
         self._batch_signature: Optional[tuple] = None
         self._current_batch = 0
         self._jump_to_first_diff = False
+        self.reference_uid: Optional[int] = None   # PDF de referência (None = o primeiro)
+        self.chain_mode = False                    # cada PDF comparado com o anterior
         self._alignment_touched = False   # o usuário acabou de ajustar o alinhamento de um painel
         self._adopt_offsets = False       # o próximo plano usa o alinhamento atual
         self._realign_pending = False     # alinhamento mudou e o usuário ainda não pediu "Recomparar"
@@ -277,6 +279,9 @@ class MainWindow(QMainWindow):
                                           tr("Ir para a diferença de texto anterior em cada PDF"))
         self.act_batch_next = self._action(tr("Comparar próximo lote"), self.compare_next_batch, ["F8"],
                                            tr("Comparar o próximo lote de páginas e ir até ele"))
+        self.act_chain = self._action(tr("Em &cadeia (cada PDF com o anterior)"), self.set_chain_mode, [],
+                                      tr("Comparar o 2º PDF com o 1º, o 3º com o 2º, e assim por diante"),
+                                      checkable=True)
         self.act_recompare = self._action(tr("Recomparar"), self.recompare, [],
                                           tr("Refazer a comparação em lotes com o alinhamento atual dos PDFs"))
         self.act_batch_prev = self._action(tr("Lote anterior"), self.go_previous_batch, ["Shift+F8"],
@@ -391,6 +396,8 @@ class MainWindow(QMainWindow):
         marks.addAction(self.act_stamp)
         m.addSeparator()
         m.addAction(self.act_diff)
+        self.reference_menu = m.addMenu(tr("&Referência da comparação"))
+        self.reference_menu.aboutToShow.connect(self._fill_reference_menu)
         m.addSeparator()
         m.addActions([self.act_ocr, self.act_ocr_language])
         m.addSeparator()
@@ -783,6 +790,9 @@ class MainWindow(QMainWindow):
         for r in range(rows):
             self.grid.setRowStretch(r, 1)
         self._selection = None
+        if self.reference_uid is not None and all(s.uid != self.reference_uid for s in self.sessions):
+            self.reference_uid = None      # a referência foi fechada: volta a ser o 1º PDF
+        self._update_roles()
         self.refresh()
         self._refresh_marks_panel()
 
@@ -1518,6 +1528,7 @@ class MainWindow(QMainWindow):
     def _on_annotation_menu(self, index: int, page: int, x: float, y: float, global_pos: QPoint) -> None:
         found = find_at(self.document_annotations(index), page, x, y)
         if found is None:
+            self._pane_menu(index, global_pos)
             return
         self._select((index, found.id))
         menu = QMenu(self)
@@ -1642,7 +1653,8 @@ class MainWindow(QMainWindow):
     def _diff_signature(self, indexes) -> tuple:
         offsets = tuple(s.offset for s in self.sessions)
         return (tuple(s.uid for s in self.sessions), tuple(id(i) for i in indexes),
-                self.compare.batch_size, offsets, self.indexer.ocr_enabled, self.indexer.ocr_language)
+                self.compare.batch_size, offsets, self.indexer.ocr_enabled, self.indexer.ocr_language,
+                self.chain_mode, self.reference_index())
 
     def update_diff(self) -> None:
         """(Re)planeja a comparação em lotes e pede os lotes necessários."""
@@ -1668,10 +1680,12 @@ class MainWindow(QMainWindow):
             signature = signature[:3] + self._batch_signature[3:4] + signature[4:]
         self._adopt_offsets = False
         if not self._same_plan(signature):
-            ref_offset = self.sessions[0].offset
-            offsets = [ref_offset - s.offset for s in self.sessions]   # página do PDF i = página da referência + isto
+            primary = self.reference_index()
+            ref_offset = self.sessions[primary].offset
+            offsets = [ref_offset - s.offset for s in self.sessions]   # página do PDF i = página da principal + isto
             options = f"ocr={int(self.indexer.ocr_enabled)}:{self.indexer.ocr_language}"
-            self.runner.configure(indexes, keys, offsets, self.compare.batch_size, options)
+            self.runner.configure(indexes, keys, offsets, self.compare.batch_size, options,
+                                  pairs=self.comparison_pairs(), primary=primary)
             self._batch_signature = signature
             self.nav.clear_diffs()
             if self.compare.next_mode != NEXT_AUTO and self.runner.batches:
@@ -1691,8 +1705,9 @@ class MainWindow(QMainWindow):
     def _batch_at_view(self) -> int:
         if not self.runner.batches or not self.sessions:
             return 0
-        ref = self.sessions[0]
-        page = min(max(self.nav.raw_page(0), 0), max(ref.page_count - 1, 0))
+        primary = self.reference_index()
+        ref = self.sessions[primary]
+        page = min(max(self.nav.raw_page(primary), 0), max(ref.page_count - 1, 0))
         return batch_for_page(self.runner.batches, page)
 
     def _ensure_batches(self) -> None:
@@ -1767,7 +1782,7 @@ class MainWindow(QMainWindow):
         if not (0 <= number < len(self.runner.batches)):
             return
         start = self.runner.batches[number].ref_range[0]
-        self.nav.go_to(start + self.sessions[0].offset)
+        self.nav.go_to(start + self.sessions[self.reference_index()].offset)
         self.refresh()
         self._update_batch_status()
 
@@ -1850,13 +1865,103 @@ class MainWindow(QMainWindow):
         self.diff_label.show()
 
     def diff_summary(self) -> str:
+        ref = self.reference_index()
         if self.nav.total_diffs == 0:
-            return tr("Texto idêntico ao do 1º PDF")
+            if self.chain_mode:
+                return tr("Texto idêntico em todos os PDFs")
+            return tr("Texto idêntico ao da referência ({name})", name=self.sessions[ref].name)
         parts = []
-        for i, session in enumerate(self.sessions[1:], start=1):
-            c = count_by_kind(self.nav.diffs[i])
-            parts.append(f"{session.name}: +{c[ADDED]} −{c[REMOVED]} ~{c[CHANGED]}")
-        return tr("Diferenças em relação a {name} — {parts}", name=self.sessions[0].name, parts=" · ".join(parts))
+        for a, b in self.comparison_pairs():
+            c = count_by_kind(self.nav.diffs[b])
+            parts.append(f"{self.sessions[b].name}: +{c[ADDED]} −{c[REMOVED]} ~{c[CHANGED]}")
+        if self.chain_mode:
+            return tr("Em cadeia (cada PDF com o anterior) — {parts}", parts=" · ".join(parts))
+        return tr("Diferenças em relação a {name} — {parts}", name=self.sessions[ref].name, parts=" · ".join(parts))
+
+    # --- referência / cadeia ----------------------------------------------------------
+    def reference_index(self) -> int:
+        """Índice do PDF de referência (no modo em cadeia, o primeiro)."""
+        if not self.chain_mode and self.reference_uid is not None:
+            for i, s in enumerate(self.sessions):
+                if s.uid == self.reference_uid:
+                    return i
+        return 0
+
+    def comparison_pairs(self) -> List[Tuple[int, int]]:
+        n = len(self.sessions)
+        if self.chain_mode:
+            return [(i - 1, i) for i in range(1, n)]
+        ref = self.reference_index()
+        return [(ref, i) for i in range(n) if i != ref]
+
+    def set_reference(self, index: int) -> None:
+        if not (0 <= index < len(self.sessions)):
+            return
+        self.reference_uid = self.sessions[index].uid
+        self.chain_mode = False
+        self._comparison_changed(tr("Referência da comparação: {name}", name=self.sessions[index].name))
+
+    def set_chain_mode(self, on: Optional[bool] = None) -> None:
+        self.chain_mode = self.act_chain.isChecked() if on is None else bool(on)
+        self._comparison_changed(tr("Comparação em cadeia: cada PDF com o anterior.") if self.chain_mode
+                                 else tr("Comparação com a referência."))
+
+    def _comparison_changed(self, message: str) -> None:
+        self.act_chain.setChecked(self.chain_mode)
+        self._batch_signature = None
+        self._update_roles()
+        if self.act_diff.isChecked():
+            self.update_diff()
+        self.statusBar().showMessage(message, 4000)
+
+    def _update_roles(self) -> None:
+        ref = self.reference_index()
+        for i, pane in enumerate(self.panes):
+            if len(self.panes) < 2:
+                pane.set_role("")
+            elif self.chain_mode:
+                pane.set_role(tr("{n}º", n=i + 1),
+                              tr("Comparação em cadeia: este PDF é comparado com o anterior") if i else
+                              tr("Comparação em cadeia: início"))
+            else:
+                pane.set_role(tr("Referência") if i == ref else "",
+                              tr("Os outros PDFs são comparados com este. Clique com o botão direito em outro "
+                                 "PDF para mudar a referência."))
+
+    def _fill_reference_menu(self) -> None:
+        from PySide6.QtGui import QActionGroup
+
+        menu = self.reference_menu
+        menu.clear()
+        group = QActionGroup(menu)
+        ref = self.reference_index()
+        for i, s in enumerate(self.sessions):
+            action = menu.addAction(s.name, lambda i=i: self.set_reference(i))
+            action.setCheckable(True)
+            action.setChecked(not self.chain_mode and i == ref)
+            group.addAction(action)
+        if self.sessions:
+            menu.addSeparator()
+        menu.addAction(self.act_chain)
+        group.addAction(self.act_chain)
+        self.act_chain.setChecked(self.chain_mode)
+        self.act_chain.setEnabled(len(self.sessions) >= 3 or self.chain_mode)
+
+    def _pane_menu(self, index: int, global_pos: QPoint) -> None:
+        if len(self.sessions) < 2:
+            return
+        menu = QMenu(self)
+        use = menu.addAction(tr("Usar como referência da comparação"))
+        use.setEnabled(self.chain_mode or index != self.reference_index())
+        chain = menu.addAction(tr("Comparar em cadeia (cada PDF com o anterior)"))
+        chain.setCheckable(True)
+        chain.setChecked(self.chain_mode)
+        chain.setEnabled(len(self.sessions) >= 3)
+        chosen = menu.exec(global_pos)
+        if chosen is use:
+            self.set_reference(index)
+        elif chosen is chain:
+            self.set_chain_mode(not self.chain_mode)
 
     def next_diff_all(self, delta: int) -> None:
         if self.nav.step_diff_all(delta):

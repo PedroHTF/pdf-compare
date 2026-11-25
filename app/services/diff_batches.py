@@ -38,11 +38,12 @@ Pair = Tuple[List[DiffMark], List[DiffMark]]   # (marcas na referência, marcas 
 @dataclass(frozen=True)
 class Batch:
     number: int                       # 0, 1, 2...
-    ranges: Tuple[PageRange, ...]     # páginas [início, fim) de cada PDF; o 1º é a referência
+    ranges: Tuple[PageRange, ...]     # páginas [início, fim) de cada PDF
+    primary: int = 0                  # PDF que define os lotes (a referência ou o 1º da cadeia)
 
     @property
     def ref_range(self) -> PageRange:
-        return self.ranges[0]
+        return self.ranges[self.primary]
 
     def label_pages(self) -> Tuple[int, int]:
         """Primeira e última página da referência, contadas a partir de 1."""
@@ -50,16 +51,17 @@ class Batch:
         return start + 1, max(end, start + 1)
 
 
-def plan_batches(page_counts: Sequence[int], offsets: Sequence[int], batch_size: int) -> List[Batch]:
-    """Divide a comparação em lotes.
+def plan_batches(page_counts: Sequence[int], offsets: Sequence[int], batch_size: int,
+                 primary: int = 0) -> List[Batch]:
+    """Divide a comparação em lotes de páginas do PDF `primary`.
 
-    `offsets[i]` é quantas páginas o PDF i está adiantado em relação à referência
-    (página do PDF i = página da referência + offsets[i]); offsets[0] é 0.
+    `offsets[i]` é quantas páginas o PDF i está adiantado em relação ao principal
+    (página do PDF i = página do principal + offsets[i]); offsets[primary] é 0.
     `batch_size` = 0 compara tudo em um único lote.
     """
     if not page_counts:
         return []
-    ref_pages = page_counts[0]
+    ref_pages = page_counts[primary]
     if batch_size <= 0 or ref_pages <= batch_size:
         count = 1
         batch_size = max(ref_pages, 1)
@@ -71,13 +73,49 @@ def plan_batches(page_counts: Sequence[int], offsets: Sequence[int], batch_size:
         end = ref_pages if k == count - 1 else min((k + 1) * batch_size, ref_pages)
         ranges = []
         for i, (pages, offset) in enumerate(zip(page_counts, offsets)):
-            if i == 0:
+            if i == primary:
                 ranges.append((start, end))
                 continue
             first = 0 if k == 0 else min(max(start + offset, 0), pages)
             last = pages if k == count - 1 else min(max(end + offset, 0), pages)
             ranges.append((first, max(first, last)))
-        batches.append(Batch(k, tuple(ranges)))
+        batches.append(Batch(k, tuple(ranges), primary))
+    return batches
+
+
+def plan_batches_from_rows(rows: Sequence[Sequence[Optional[int]]], page_counts: Sequence[int],
+                           batch_size: int, primary: int = 0) -> List[Batch]:
+    """Lotes a partir do alinhamento por conteúdo (`rows`: a página de cada PDF em cada linha).
+
+    Cada lote cobre as linhas das páginas [início, fim) do PDF principal, mais as
+    páginas incluídas nos outros PDFs entre elas.
+    """
+    if not rows or not page_counts:
+        return []
+    ref_pages = page_counts[primary]
+    row_of = {}
+    for r, row in enumerate(rows):
+        if row[primary] is not None:
+            row_of.setdefault(row[primary], r)
+    size = ref_pages if batch_size <= 0 or ref_pages <= batch_size else batch_size
+    count = 1 if size >= ref_pages else math.ceil(ref_pages / size)
+    batches = []
+    for k in range(count):
+        start, end = k * size, ref_pages if k == count - 1 else (k + 1) * size
+        r0 = 0 if k == 0 else row_of.get(start, len(rows))
+        r1 = len(rows) if k == count - 1 else row_of.get(end, len(rows))
+        ranges = []
+        for doc, pages in enumerate(page_counts):
+            if doc == primary:
+                ranges.append((start, end))
+                continue
+            shown = [row[doc] for row in rows[r0:r1] if row[doc] is not None]
+            if shown:
+                ranges.append((min(shown), max(shown) + 1))
+            else:   # nada deste PDF no lote: intervalo vazio na posição certa
+                after = next((row[doc] for row in rows[r1:] if row[doc] is not None), pages)
+                ranges.append((after, after))
+        batches.append(Batch(k, tuple(ranges), primary))
     return batches
 
 

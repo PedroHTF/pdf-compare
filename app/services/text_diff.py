@@ -160,6 +160,28 @@ def merge_pairs(pairs: Sequence[Tuple[Sequence[DiffMark], Sequence[DiffMark]]]) 
     return result
 
 
+def merge_results(documents: int, pairs: Sequence[Tuple[int, int]],
+                  results: Sequence[Tuple[Sequence[DiffMark], Sequence[DiffMark]]]) -> List[List[DiffMark]]:
+    """Junta resultados de pares quaisquer (a, b) em marcas por documento.
+
+    Cada documento que aparece como "b" (o comparado) mostra as marcas que recebeu
+    nesse papel. Um documento que só aparece como "a" (a base: a referência, ou o
+    primeiro da cadeia) mostra o que foi removido ou alterado nele, sem repetições.
+    """
+    as_other: Dict[int, List[DiffMark]] = {}
+    as_base: Dict[int, Dict[Tuple[int, Tuple[Rect, ...]], DiffMark]] = {}
+    for (a, b), (marks_a, marks_b) in zip(pairs, results):
+        as_other.setdefault(b, []).extend(marks_b)
+        base = as_base.setdefault(a, {})
+        for mark in marks_a:
+            base.setdefault((mark.page, mark.rects), mark)
+    out: List[List[DiffMark]] = []
+    for doc in range(documents):
+        marks = as_other[doc] if doc in as_other else list(as_base.get(doc, {}).values())
+        out.append(sorted(marks, key=reading_order))
+    return out
+
+
 def count_by_kind(marks: Sequence[DiffMark]) -> Dict[str, int]:
     counts = {ADDED: 0, REMOVED: 0, CHANGED: 0}
     for mark in marks:

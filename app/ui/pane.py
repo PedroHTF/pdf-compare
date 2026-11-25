@@ -188,8 +188,12 @@ class PdfPane(QFrame):
         self.hit_box.hide()
 
         self.btn_close = tool_button("✕", tr("Fechar este PDF"))
+        self.role_label = QLabel()
+        self.role_label.setObjectName("roleBadge")
+        self.role_label.hide()
 
         row.addWidget(self.name_label, 1)
+        row.addWidget(self.role_label)
         row.addSpacing(6)
         row.addWidget(self.btn_prev)
         row.addWidget(self.page_spin)
@@ -246,6 +250,12 @@ class PdfPane(QFrame):
             return
         self._args = args
         self._render_now()
+
+    def set_role(self, text: str, tip: str = "") -> None:
+        """Etiqueta no cabeçalho (ex.: "Referência" da comparação)."""
+        self.role_label.setText(text)
+        self.role_label.setToolTip(tip)
+        self.role_label.setVisible(bool(text))
 
     def invalidate(self) -> None:
         """Força redesenhar na próxima render() (ex.: cores trocadas nas Configurações)."""

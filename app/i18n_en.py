@@ -268,7 +268,6 @@ EN = {
 
     # --- comparação de texto --------------------------------------------------------
     "Comparando texto… aguardando a leitura dos PDFs": "Comparing text… waiting for the PDFs to be read",
-    "Texto idêntico ao do 1º PDF": "Text identical to the 1st PDF",
     "Diferenças em relação a {name} — {parts}": "Differences from {name} — {parts}",
     "Nenhuma diferença de texto para navegar.": "No text differences to navigate.",
 
@@ -618,4 +617,36 @@ EN = {
         'The alignment changed. Click “Recompare” to redo the batches with the new alignment.',
     'alinhamento mudou':
         'alignment changed',
+    '&Referência da comparação':
+        'Comparison &reference',
+    'Comparar em cadeia (cada PDF com o anterior)':
+        'Compare in a chain (each PDF with the previous one)',
+    'Comparar o 2º PDF com o 1º, o 3º com o 2º, e assim por diante':
+        'Compare the 2nd PDF with the 1st, the 3rd with the 2nd, and so on',
+    'Comparação com a referência.':
+        'Comparing with the reference.',
+    'Comparação em cadeia: cada PDF com o anterior.':
+        'Chain comparison: each PDF with the previous one.',
+    'Comparação em cadeia: este PDF é comparado com o anterior':
+        'Chain comparison: this PDF is compared with the previous one',
+    'Comparação em cadeia: início':
+        'Chain comparison: start',
+    'Em &cadeia (cada PDF com o anterior)':
+        'In a &chain (each PDF with the previous one)',
+    'Em cadeia (cada PDF com o anterior) — {parts}':
+        'In a chain (each PDF with the previous one) — {parts}',
+    'Os outros PDFs são comparados com este. Clique com o botão direito em outro PDF para mudar a referência.':
+        'The other PDFs are compared with this one. Right-click another PDF to change the reference.',
+    'Referência':
+        'Reference',
+    'Referência da comparação: {name}':
+        'Comparison reference: {name}',
+    'Texto idêntico ao da referência ({name})':
+        'Text identical to the reference ({name})',
+    'Texto idêntico em todos os PDFs':
+        'Text identical in all PDFs',
+    'Usar como referência da comparação':
+        'Use as comparison reference',
+    '{n}º':
+        '#{n}',
 }
