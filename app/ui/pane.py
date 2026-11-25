@@ -240,10 +240,12 @@ class PdfPane(QFrame):
         page_diffs: List[DiffMark] = (),
         current_diff: Optional[DiffMark] = None,
         annotations: List[Annotation] = (),
+        blank_text: str = "",
     ) -> None:
-        """Exibe a página `page` (None = posição fora do documento)."""
+        """Exibe a página `page` (None = posição fora do documento ou sem página correspondente)."""
         self._annotations = tuple(annotations)
-        annot_key = tuple(repr(a) for a in annotations) + (self.selected_id,)
+        self._blank_text = blank_text
+        annot_key = tuple(repr(a) for a in annotations) + (self.selected_id, blank_text)
         args: RenderArgs = (page, raw_page, tuple(page_hits), current_hit, zoom,
                             tuple(page_diffs), current_diff, annot_key)
         if args == self._args:
@@ -347,7 +349,9 @@ class PdfPane(QFrame):
         self._shown_page = None
         self._shown_hit = None
         self.image.setPixmap(QPixmap())
-        if raw < 0:
+        if getattr(self, "_blank_text", ""):
+            self.image.setText(self._blank_text)
+        elif raw < 0:
             self.image.setText(tr("Este PDF começa mais adiante.\nUse ▶ neste painel para trazê-lo para cá."))
         else:
             self.image.setText(tr("Fim do documento ({n} páginas).\nUse ◀ neste painel para voltar.", n=count))

@@ -649,4 +649,22 @@ EN = {
         'Use as comparison reference',
     '{n}º':
         '#{n}',
+    'Alinhar por &conteúdo':
+        'Align by &content',
+    'Mostrar lado a lado as páginas com o mesmo conteúdo, compensando páginas incluídas ou removidas':
+        'Show pages with the same content side by side, compensating for added or removed pages',
+    'Alinhar por conteúdo':
+        'Align by content',
+    'Desfazer os ajustes manuais do alinhamento por conteúdo (Ctrl+L)':
+        'Undo manual adjustments to the content alignment (Ctrl+L)',
+    'Ajustes manuais do alinhamento desfeitos.':
+        'Manual alignment adjustments undone.',
+    'Sem página correspondente neste PDF.\nO conteúdo dos outros PDFs nesta posição foi incluído neles ou removido deste.':
+        'No matching page in this PDF.\nThe content of the other PDFs at this position was added to them or removed from this one.',
+    'Alinhando por conteúdo… aguardando a leitura dos PDFs.':
+        'Aligning by content… waiting for the PDFs to be read.',
+    'Alinhado por conteúdo: {extra} posição(ões) com páginas incluídas e {missing} com páginas removidas em relação a {name}.':
+        'Aligned by content: {extra} position(s) with added pages and {missing} with removed pages relative to {name}.',
+    'Página {page} de {name} fixada ao lado da página {ref} de {ref_name}. Realinhar desfaz.':
+        'Page {page} of {name} pinned next to page {ref} of {ref_name}. Realign undoes it.',
 }

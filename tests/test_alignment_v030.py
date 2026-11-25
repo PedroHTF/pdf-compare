@@ -84,3 +84,170 @@ def test_chain_mode(three, qtbot):
     w.set_reference(2)                                  # escolher uma referência sai da cadeia
     _idle(qtbot, w)
     assert not w.chain_mode and w.runner.pairs == [(2, 0), (2, 1)]
+
+
+# --- alinhamento por conteúdo: serviço ------------------------------------------------------------
+from app.services.content_align import (  # noqa: E402
+    AlignmentStore,
+    PairMatch,
+    _increasing_subset,
+    align_pages,
+    build_rows,
+    match_lines,
+)
+
+
+def _match(pages_a, pages_b, votes):
+    return PairMatch(pages_a, pages_b, [], dict(votes))
+
+
+def test_align_pages_detects_inserted_and_removed_pages():
+    # B tem uma página nova depois da 2ª e perdeu a 4ª página de A
+    votes = {(0, 0): 9, (1, 1): 9, (2, 3): 9, (4, 4): 9, (1, 3): 1}
+    assert align_pages(_match(5, 5, votes)) == [(0, 0), (1, 1), (None, 2), (2, 3), (3, None), (4, 4)]
+
+
+def test_align_pages_pairs_leftovers_in_order_and_respects_manual():
+    # sem texto em comum (ex.: PDFs escaneados): pareia na ordem
+    assert align_pages(_match(3, 4, {})) == [(0, 0), (1, 1), (2, 2), (None, 3)]
+    # página 1 de A muito alterada: fica com a página 1 de B, que sobrou entre as pareadas
+    assert align_pages(_match(3, 3, {(0, 0): 5, (2, 2): 5})) == [(0, 0), (1, 1), (2, 2)]
+    # par fixado à mão tem prioridade sobre os votos
+    pairs = align_pages(_match(3, 4, {(0, 0): 5, (1, 1): 5, (2, 2): 5}), manual=[(1, 2)])
+    assert pairs == [(0, 0), (None, 1), (1, 2), (2, 3)]
+
+
+def test_increasing_subset_prefers_heavier_consistent_pairs():
+    chosen = _increasing_subset([(0, 0, 5), (1, 5, 1), (2, 1, 5), (3, 2, 5)])
+    assert chosen == [(0, 0), (2, 1), (3, 2)]
+
+
+def test_build_rows_places_insertions_side_by_side():
+    pairs = {1: [(0, 0), (None, 1), (1, 2)], 2: [(0, 0), (None, 1), (None, 2), (1, 3)]}
+    rows = build_rows([2, 3, 4], 0, pairs)
+    assert rows == [(0, 0, 0), (None, 1, 1), (None, None, 2), (1, 2, 3)]
+    rows = build_rows([3, 2], 1, {0: [(0, 0), (None, 1), (1, 2)]})   # outro PDF como principal
+    assert rows == [(0, 0), (1, None), (2, 1)]
+
+
+def test_match_lines_from_real_pdfs(make_pdf):
+    import fitz
+
+    from app.services.text_index import DocumentIndex
+
+    def index(path):
+        with fitz.open(path) as doc:
+            return DocumentIndex.build(doc)
+
+    a = index(make_pdf("a.pdf", texts=["um", "dois", "tres"]))
+    b = index(make_pdf("b.pdf", texts=["um", "novo", "dois", "tres"]))
+    m = match_lines(a, b)
+    assert m.votes == {(0, 0): 1, (1, 2): 1, (2, 3): 1}
+    assert [(pa, pb) for pa, _, pb, _ in m.anchors] == [(0, 0), (1, 2), (2, 3)]
+    assert align_pages(m) == [(0, 0), (None, 1), (1, 2), (2, 3)]
+
+
+def test_alignment_store(tmp_path):
+    store = AlignmentStore(tmp_path / "al")
+    key = AlignmentStore.key("fa", "fb")
+    assert key != AlignmentStore.key("fb", "fa") and not store.has_manual(key)
+    store.fix_pages(key, 2, 5)
+    store.fix_pages(key, 4, 3)          # fora de ordem com (2, 5): substitui
+    assert store.manual_pages(key) == [(4, 3)]
+    store.fix_pages(key, 1, 1)
+    store.set_gap(key, 3, 100.0, 24.0)
+    store.add_line(key, (1, 50.0, 2, 80.0))
+    again = AlignmentStore(tmp_path / "al")
+    assert again.manual_pages(key) == [(1, 1), (4, 3)]
+    assert again.manual_gaps(key) == [(3, 100.0, 24.0)] and again.manual_lines(key) == [(1, 50.0, 2, 80.0)]
+    again.set_gap(key, 3, 100.4, 0)     # altura 0 remove o espaço
+    assert again.manual_gaps(key) == []
+    again.clear(key)
+    assert not AlignmentStore(tmp_path / "al").has_manual(key)
+
+
+# --- alinhamento por conteúdo: interface -----------------------------------------------------------
+CHAPTERS = [f"Capitulo {k} texto exclusivo {k * 7} fim" for k in range(6)]
+
+
+@pytest.fixture
+def versions(window, make_pdf):
+    a = make_pdf("v1.pdf", texts=CHAPTERS)
+    # v2: página nova depois do capítulo 1, capítulo 4 removido, capítulo 5 alterado
+    b = make_pdf("v2.pdf", texts=CHAPTERS[:2] + ["Pagina totalmente nova"] + CHAPTERS[2:4]
+                 + ["Capitulo 5 texto exclusivo 35 ALTERADO"])
+    window.set_compare_settings(CompareSettings(batch_size=0))
+    window.add_files([a, b])
+    qtbot_wait = window
+    return window
+
+
+def _align(w, qtbot):
+    qtbot.waitUntil(lambda: not w.indexer.busy, timeout=10000)
+    w.act_content_align.trigger()
+    assert w.nav.by_rows
+
+
+def test_content_alignment_rows_and_blank_panes(versions, qtbot):
+    w = versions
+    _align(w, qtbot)
+    assert w.nav.rows == [(0, 0), (1, 1), (None, 2), (2, 3), (3, 4), (4, None), (5, 5)]
+    w.go_first()
+    w.step(+2)
+    assert (w.nav.page_for(0), w.nav.page_for(1)) == (None, 2)
+    assert "Sem página correspondente" in w.panes[0].image.text()
+    w.step(+3)
+    assert (w.nav.page_for(0), w.nav.page_for(1)) == (4, None)
+    w.step(+1)
+    assert (w.nav.page_for(0), w.nav.page_for(1)) == (5, 5)
+
+    w.act_content_align.trigger()                      # desligar volta ao modo por página
+    assert not w.nav.by_rows and w.nav.page_for(0) == 5
+
+
+def test_content_alignment_with_text_comparison(versions, qtbot):
+    w = versions
+    _align(w, qtbot)
+    w.act_diff.trigger()
+    _idle(qtbot, w)
+    pages = sorted({m.page for m in w.nav.diffs[1]})
+    assert pages == [2, 5]                             # só a página nova e o capítulo 5 alterado
+    assert sorted({m.page for m in w.nav.diffs[0]}) == [4, 5]   # capítulo 4 removido
+    w.go_first()
+    w.act_diff_next.trigger()                          # F7 vai à próxima diferença de qualquer PDF
+    assert w.nav.page_for(1) == 2
+
+
+def test_manual_alignment_is_saved_and_realign_undoes(versions, qtbot, tmp_path):
+    from PySide6.QtCore import QSettings
+
+    from app.ui.main_window import MainWindow
+
+    w = versions
+    _align(w, qtbot)
+    w.go_first()
+    w.step(+1)                                         # capítulo 1 ao lado do capítulo 1
+    w._on_pane_step(1, +1)                             # usuário: "a página 3 de v2 fica aqui"
+    assert (w.nav.page_for(0), w.nav.page_for(1)) == (1, 2)
+    assert w.act_realign.isEnabled() and "fixada" in w.statusBar().currentMessage()
+
+    again = MainWindow(QSettings(str(tmp_path / "s2.ini"), QSettings.Format.IniFormat), data_dir=w.data_dir)
+    again._notify = lambda *a: None
+    qtbot.addWidget(again)
+    again.act_content_align.setChecked(True)
+    again.add_files([s.path for s in w.sessions])
+    qtbot.waitUntil(lambda: not again.indexer.busy, timeout=10000)
+    assert (1, 2) in again.nav.rows                    # o ajuste manual volta com os mesmos PDFs
+
+    w.realign()
+    assert (1, 1) in w.nav.rows and not w.act_realign.isEnabled()
+
+
+def test_content_alignment_follows_reference(versions, qtbot):
+    w = versions
+    _align(w, qtbot)
+    w.set_reference(1)
+    assert w.nav.rows == [(0, 0), (1, 1), (None, 2), (2, 3), (3, 4), (4, None), (5, 5)]
+    assert w.runner.pairs == [] or w.runner.pairs == [(1, 0)]
+    w.panes[0].page_jump.emit(0, 3)                    # página digitada no painel, alinhado: fixa o par
+    assert w.nav.page_for(0) == 3
