@@ -16,19 +16,19 @@ from __future__ import annotations
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from app.services.diff_batches import Batch, DiffCache, Pair, pair_key, plan_batches
-from app.services.text_diff import DiffMark, diff_pair, merge_pairs
+from app.services.text_diff import DiffMark, diff_pair, merge_results
 from app.services.text_index import DocumentIndex
 
 
 @dataclass
 class _Job:
     batch: int
-    other: int           # índice do PDF comparado com a referência (1, 2...)
+    pair: int            # posição do par (a, b) em `pairs`
     priority: bool
     key: str
 
@@ -46,7 +46,8 @@ class BatchRunner(QObject):
         self._indexes: List[DocumentIndex] = []
         self._fingerprints: List[str] = []
         self._options = ""
-        self._results: Dict[int, Dict[int, Pair]] = {}   # lote -> {outro PDF: resultado}
+        self.pairs: List[Tuple[int, int]] = []           # (base, comparado) de cada comparação
+        self._results: Dict[int, Dict[int, Pair]] = {}   # lote -> {par: resultado}
         self._queue: List[_Job] = []
         self._running: Optional[_Job] = None
         self._future: Optional[Future] = None
@@ -62,14 +63,25 @@ class BatchRunner(QObject):
 
     # --- configuração ----------------------------------------------------------
     def configure(self, indexes: Sequence[DocumentIndex], fingerprints: Sequence[str], offsets: Sequence[int],
-                  batch_size: int, options: str = "") -> None:
-        """Novo plano de lotes. Descarta resultados e pedidos anteriores."""
+                  batch_size: int, options: str = "", pairs: Optional[Sequence[Tuple[int, int]]] = None,
+                  primary: int = 0, batches: Optional[Sequence[Batch]] = None) -> None:
+        """Novo plano de lotes. Descarta resultados e pedidos anteriores.
+
+        `pairs`: comparações (base, comparado); padrão: o PDF 0 com cada um dos outros.
+        `batches`: plano pronto (ex.: do alinhamento por conteúdo); senão, usa `offsets`.
+        """
         self.reset()
         self._indexes = list(indexes)
         self._fingerprints = list(fingerprints)
         self._options = options
+        self.pairs = list(pairs) if pairs is not None else [(0, i) for i in range(1, len(indexes))]
         counts = [i.page_count for i in self._indexes]
-        self.batches = plan_batches(counts, offsets, batch_size) if len(counts) >= 2 else []
+        if len(counts) < 2:
+            self.batches = []
+        elif batches is not None:
+            self.batches = list(batches)
+        else:
+            self.batches = plan_batches(counts, offsets, batch_size, primary)
 
     def reset(self) -> None:
         self._generation += 1
@@ -78,6 +90,7 @@ class BatchRunner(QObject):
         self._future = None
         self._results.clear()
         self.batches = []
+        self.pairs = []
         self._requested = self._finished = 0
         self.from_cache = 0
         self._timer.stop()
@@ -97,7 +110,7 @@ class BatchRunner(QObject):
         return len(self._indexes)
 
     def is_done(self, batch: int) -> bool:
-        return len(self._results.get(batch, {})) == max(self.documents - 1, 0) and self.documents >= 2
+        return bool(self.pairs) and len(self._results.get(batch, {})) == len(self.pairs)
 
     def is_pending(self, batch: int) -> bool:
         return any(j.batch == batch for j in self._queue) or (self._running is not None and self._running.batch == batch)
@@ -114,8 +127,8 @@ class BatchRunner(QObject):
         for b in self.batches:
             if not self.is_done(b.number):
                 continue
-            pairs = [self._results[b.number][i] for i in range(1, self.documents)]
-            for doc, marks in enumerate(merge_pairs(pairs)):
+            results = [self._results[b.number][p] for p in range(len(self.pairs))]
+            for doc, marks in enumerate(merge_results(self.documents, self.pairs, results)):
                 result[doc].extend(marks)
         return result
 
@@ -133,11 +146,11 @@ class BatchRunner(QObject):
             return False
         b = self.batches[batch]
         jobs = []
-        for other in range(1, self.documents):
-            if other in self._results.get(batch, {}):
+        for p, (a, other) in enumerate(self.pairs):
+            if p in self._results.get(batch, {}):
                 continue
-            key = pair_key(self._fingerprints[0], self._fingerprints[other], b.ranges[0], b.ranges[other], self._options)
-            jobs.append(_Job(batch, other, priority, key))
+            key = pair_key(self._fingerprints[a], self._fingerprints[other], b.ranges[a], b.ranges[other], self._options)
+            jobs.append(_Job(batch, p, priority, key))
         self._queue = jobs + self._queue if priority else self._queue + jobs
         self._requested += len(jobs)
         self.progress.emit(self._finished, self._requested)
@@ -173,7 +186,7 @@ class BatchRunner(QObject):
     # --- execução ----------------------------------------------------------------
     def _ready(self, job: _Job) -> bool:
         b = self.batches[job.batch]
-        for doc in (0, job.other):
+        for doc in self.pairs[job.pair]:
             end = b.ranges[doc][1]
             if len(self._indexes[doc].pages) < end:
                 return False
@@ -204,10 +217,10 @@ class BatchRunner(QObject):
             QTimer.singleShot(0, self._tick)
             return
         b = self.batches[job.batch]
-        ref, other = self._indexes[0], self._indexes[job.other]
+        a, other = self.pairs[job.pair]
         self._running = job
-        self._future = self._executor.submit(diff_pair, ref, other,
-                                             ref_pages=b.ranges[0], other_pages=b.ranges[job.other])
+        self._future = self._executor.submit(diff_pair, self._indexes[a], self._indexes[other],
+                                             ref_pages=b.ranges[a], other_pages=b.ranges[other])
         self._future.generation = self._generation   # type: ignore[attr-defined]
 
     def _collect(self) -> None:
@@ -225,7 +238,7 @@ class BatchRunner(QObject):
         self._store(job, pair)
 
     def _store(self, job: _Job, pair: Pair) -> None:
-        self._results.setdefault(job.batch, {})[job.other] = (list(pair[0]), list(pair[1]))
+        self._results.setdefault(job.batch, {})[job.pair] = (list(pair[0]), list(pair[1]))
         self._finished += 1
         self.progress.emit(self._finished, self._requested)
         if self.is_done(job.batch):

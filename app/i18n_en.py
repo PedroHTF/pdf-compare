@@ -268,7 +268,6 @@ EN = {
 
     # --- comparação de texto --------------------------------------------------------
     "Comparando texto… aguardando a leitura dos PDFs": "Comparing text… waiting for the PDFs to be read",
-    "Texto idêntico ao do 1º PDF": "Text identical to the 1st PDF",
     "Diferenças em relação a {name} — {parts}": "Differences from {name} — {parts}",
     "Nenhuma diferença de texto para navegar.": "No text differences to navigate.",
 
@@ -618,4 +617,90 @@ EN = {
         'The alignment changed. Click “Recompare” to redo the batches with the new alignment.',
     'alinhamento mudou':
         'alignment changed',
+    '&Referência da comparação':
+        'Comparison &reference',
+    'Comparar em cadeia (cada PDF com o anterior)':
+        'Compare in a chain (each PDF with the previous one)',
+    'Comparar o 2º PDF com o 1º, o 3º com o 2º, e assim por diante':
+        'Compare the 2nd PDF with the 1st, the 3rd with the 2nd, and so on',
+    'Comparação com a referência.':
+        'Comparing with the reference.',
+    'Comparação em cadeia: cada PDF com o anterior.':
+        'Chain comparison: each PDF with the previous one.',
+    'Comparação em cadeia: este PDF é comparado com o anterior':
+        'Chain comparison: this PDF is compared with the previous one',
+    'Comparação em cadeia: início':
+        'Chain comparison: start',
+    'Em &cadeia (cada PDF com o anterior)':
+        'In a &chain (each PDF with the previous one)',
+    'Em cadeia (cada PDF com o anterior) — {parts}':
+        'In a chain (each PDF with the previous one) — {parts}',
+    'Os outros PDFs são comparados com este. Clique com o botão direito em outro PDF para mudar a referência.':
+        'The other PDFs are compared with this one. Right-click another PDF to change the reference.',
+    'Referência':
+        'Reference',
+    'Referência da comparação: {name}':
+        'Comparison reference: {name}',
+    'Texto idêntico ao da referência ({name})':
+        'Text identical to the reference ({name})',
+    'Texto idêntico em todos os PDFs':
+        'Text identical in all PDFs',
+    'Usar como referência da comparação':
+        'Use as comparison reference',
+    '{n}º':
+        '#{n}',
+    'Alinhar por &conteúdo':
+        'Align by &content',
+    'Mostrar lado a lado as páginas com o mesmo conteúdo, compensando páginas incluídas ou removidas':
+        'Show pages with the same content side by side, compensating for added or removed pages',
+    'Alinhar por conteúdo':
+        'Align by content',
+    'Desfazer os ajustes manuais do alinhamento por conteúdo (Ctrl+L)':
+        'Undo manual adjustments to the content alignment (Ctrl+L)',
+    'Ajustes manuais do alinhamento desfeitos.':
+        'Manual alignment adjustments undone.',
+    'Sem página correspondente neste PDF.\nO conteúdo dos outros PDFs nesta posição foi incluído neles ou removido deste.':
+        'No matching page in this PDF.\nThe content of the other PDFs at this position was added to them or removed from this one.',
+    'Alinhando por conteúdo… aguardando a leitura dos PDFs.':
+        'Aligning by content… waiting for the PDFs to be read.',
+    'Alinhado por conteúdo: {extra} posição(ões) com páginas incluídas e {missing} com páginas removidas em relação a {name}.':
+        'Aligned by content: {extra} position(s) with added pages and {missing} with removed pages relative to {name}.',
+    'Página {page} de {name} fixada ao lado da página {ref} de {ref_name}. Realinhar desfaz.':
+        'Page {page} of {name} pinned next to page {ref} of {ref_name}. Realign undoes it.',
+    '(ajustado)':
+        '(adjusted)',
+    'espaço de alinhamento · {pt} pt':
+        'alignment space · {pt} pt',
+    'Rolagem &contínua':
+        '&Continuous scrolling',
+    'Mostrar todas as páginas em sequência, em vez de uma de cada vez':
+        'Show all pages in sequence instead of one at a time',
+    'Contínua':
+        'Continuous',
+    'Inserir espaço aqui':
+        'Insert space here',
+    'Remover este espaço':
+        'Remove this space',
+    'Alinhar este trecho com…':
+        'Align this passage with…',
+    'Depois, clique no trecho correspondente em outro PDF':
+        'Then click the matching passage in another PDF',
+    'Alinhamento de trecho cancelado.':
+        'Passage alignment canceled.',
+    'Espaço ajustado. Realinhar desfaz os ajustes manuais.':
+        'Space adjusted. Realign undoes manual adjustments.',
+    'Espaço inserido. Arraste a alça embaixo dele para ajustar a altura.':
+        'Space inserted. Drag the handle below it to adjust the height.',
+    'Espaço removido. Realinhar desfaz os ajustes manuais.':
+        'Space removed. Realign undoes manual adjustments.',
+    'Agora clique no trecho correspondente em outro PDF (Esc cancela).':
+        'Now click the matching passage in another PDF (Esc cancels).',
+    'Trechos alinhados. Realinhar desfaz os ajustes manuais.':
+        'Passages aligned. Realign undoes manual adjustments.',
+    'Role qualquer PDF: os outros acompanham  ·  botão direito: inserir espaço ou alinhar um trecho  ·  arraste a alça de um espaço para ajustar':
+        'Scroll any PDF: the others follow  ·  right-click: insert space or align a passage  ·  drag a space handle to adjust',
+    '◀ ▶ ou setas do teclado: avançam todos juntos  ·  ◀ ▶ de um painel: escolhem qual página dele fica ao lado da referência':
+        '◀ ▶ or arrow keys: move all together  ·  a pane’s ◀ ▶: choose which of its pages sits next to the reference',
+    'Rolagem contínua':
+        'Continuous scrolling',
 }

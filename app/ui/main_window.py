@@ -51,7 +51,17 @@ from app.services.annotations import (
     words_in_rect,
 )
 from app.services.batch_runner import BatchRunner
-from app.services.diff_batches import ALL_PAGES, DiffCache, batch_for_page, format_size
+from app.services.content_align import (
+    AlignmentStore,
+    PairMatch,
+    align_pages,
+    build_rows,
+    combined_anchors,
+    match_lines,
+    rows_key,
+)
+from app.services.strip_layout import StripLayout, compute_layouts
+from app.services.diff_batches import ALL_PAGES, DiffCache, batch_for_page, format_size, plan_batches_from_rows
 from app.services.preferences import (
     LOOKAHEAD_ALL,
     NEXT_AUTO,
@@ -172,6 +182,16 @@ class MainWindow(QMainWindow):
         self._batch_signature: Optional[tuple] = None
         self._current_batch = 0
         self._jump_to_first_diff = False
+        self.align_store = AlignmentStore(self.data_dir / "alinhamentos")
+        self._matches: Dict[tuple, PairMatch] = {}   # comparação de linhas por par de PDFs (em memória)
+        self._align_version = 0                     # muda a cada ajuste manual (espaços, trechos)
+        self._layouts_key: Optional[tuple] = None
+        self._layouts: List[StripLayout] = []
+        self._heights: Dict[int, List[float]] = {}  # alturas das páginas por PDF (uid)
+        self._strip_position: Optional[int] = None  # posição já mostrada na rolagem contínua
+        self._pick: Optional[Tuple[int, int, float]] = None   # 1º ponto de "Alinhar este trecho com…"
+        self.reference_uid: Optional[int] = None   # PDF de referência (None = o primeiro)
+        self.chain_mode = False                    # cada PDF comparado com o anterior
         self._alignment_touched = False   # o usuário acabou de ajustar o alinhamento de um painel
         self._adopt_offsets = False       # o próximo plano usa o alinhamento atual
         self._realign_pending = False     # alinhamento mudou e o usuário ainda não pediu "Recomparar"
@@ -258,9 +278,16 @@ class MainWindow(QMainWindow):
                                       tr("Ir para o início de todos os PDFs"), S.SP_MediaSkipBackward)
         self.act_last = self._action(tr("Fim"), self.go_last, ["Ctrl+End"],
                                      tr("Ir para o fim de todos os PDFs"), S.SP_MediaSkipForward)
+        self.act_content_align = self._action(
+            tr("Alinhar por &conteúdo"), self.toggle_content_align, ["Ctrl+Shift+L"],
+            tr("Mostrar lado a lado as páginas com o mesmo conteúdo, compensando páginas incluídas ou removidas"),
+            checkable=True)
+        self.act_content_align.setIconText(tr("Alinhar por conteúdo"))
+        self.act_content_align.setChecked(self._bool_setting("view/content_align", False))
         self.act_realign = self._action(tr("Realinhar"), self.realign, ["Ctrl+L"],
                                         tr("Desfazer ajustes individuais: todos voltam a mostrar a mesma página"),
                                         S.SP_BrowserReload)
+        self._realign_tip = self.act_realign.toolTip()
 
         self.act_find = self._action(tr("&Pesquisar"), self.focus_search, ["Ctrl+F"], tr("Pesquisar em todos os PDFs"))
         self.act_hit_next = self._action(tr("Próxima ocorrência"), lambda: self.next_hit_all(+1), ["F3"],
@@ -277,6 +304,9 @@ class MainWindow(QMainWindow):
                                           tr("Ir para a diferença de texto anterior em cada PDF"))
         self.act_batch_next = self._action(tr("Comparar próximo lote"), self.compare_next_batch, ["F8"],
                                            tr("Comparar o próximo lote de páginas e ir até ele"))
+        self.act_chain = self._action(tr("Em &cadeia (cada PDF com o anterior)"), self.set_chain_mode, [],
+                                      tr("Comparar o 2º PDF com o 1º, o 3º com o 2º, e assim por diante"),
+                                      checkable=True)
         self.act_recompare = self._action(tr("Recomparar"), self.recompare, [],
                                           tr("Refazer a comparação em lotes com o alinhamento atual dos PDFs"))
         self.act_batch_prev = self._action(tr("Lote anterior"), self.go_previous_batch, ["Shift+F8"],
@@ -339,6 +369,11 @@ class MainWindow(QMainWindow):
             tr("Ao rolar a página de um PDF, os outros acompanham"), checkable=True,
         )
         self.act_linked_scroll.setChecked(self._bool_setting("view/linked_scroll", True))
+        self.act_continuous = self._action(
+            tr("Rolagem &contínua"), self.toggle_continuous, ["Ctrl+Shift+C"],
+            tr("Mostrar todas as páginas em sequência, em vez de uma de cada vez"), checkable=True)
+        self.act_continuous.setIconText(tr("Contínua"))
+        self.act_continuous.setChecked(self._bool_setting("view/continuous", False))
 
         self.act_shortcuts = self._action(tr("&Atalhos de teclado"), self.show_shortcuts, ["F1"])
         self.act_license = self._action(tr("&Licença e créditos…"), self.show_license,
@@ -371,6 +406,7 @@ class MainWindow(QMainWindow):
         m.addActions([self.act_prev, self.act_next, self.act_first, self.act_last])
         m.addSeparator()
         m.addAction(self.act_realign)
+        m.addAction(self.act_content_align)
         m.addSeparator()
         m.addActions([self.act_find, self.act_hit_next, self.act_hit_prev])
         m.addSeparator()
@@ -381,6 +417,7 @@ class MainWindow(QMainWindow):
         m.addActions([self.act_fit_width, self.act_fit_page, self.act_zoom_in, self.act_zoom_out])
         m.addSeparator()
         m.addAction(self.act_linked_scroll)
+        m.addAction(self.act_continuous)
         self.view_menu = m
 
         m = bar.addMenu(tr("&Ferramentas"))
@@ -391,6 +428,8 @@ class MainWindow(QMainWindow):
         marks.addAction(self.act_stamp)
         m.addSeparator()
         m.addAction(self.act_diff)
+        self.reference_menu = m.addMenu(tr("&Referência da comparação"))
+        self.reference_menu.aboutToShow.connect(self._fill_reference_menu)
         m.addSeparator()
         m.addActions([self.act_ocr, self.act_ocr_language])
         m.addSeparator()
@@ -420,6 +459,7 @@ class MainWindow(QMainWindow):
         tb.addActions([self.act_first, self.act_prev, self.act_next, self.act_last])
         tb.addSeparator()
         tb.addAction(self.act_realign)
+        tb.addAction(self.act_content_align)
         tb.addSeparator()
         tb.addAction(self.act_zoom_out)
         self.zoom_combo = QComboBox()
@@ -436,6 +476,7 @@ class MainWindow(QMainWindow):
         tb.addAction(self.act_zoom_in)
         tb.addSeparator()
         tb.addAction(self.act_linked_scroll)
+        tb.addAction(self.act_continuous)
         tb.addSeparator()
         tb.addAction(self.act_diff)
         tb.addSeparator()
@@ -594,9 +635,10 @@ class MainWindow(QMainWindow):
                   self.batch_cancel_btn):
             row.addWidget(w)
         self.batch_bar.hide()
-        self.statusBar().insertPermanentWidget(0, self.batch_bar)
+        self.statusBar().addPermanentWidget(self.batch_bar)
 
     def _create_status_bar(self) -> None:
+        self._hint_text = ""
         self.hint_label = QLabel()
         self.hint_label.setObjectName("muted")
         self.statusBar().addWidget(self.hint_label, 1)
@@ -769,6 +811,11 @@ class MainWindow(QMainWindow):
             pane.annotation_changed.connect(self._on_mark_changed)
             pane.selection_changed.connect(self._on_selection)
             pane.edit_requested.connect(self.edit_annotation)
+            pane.strip_scrolled.connect(self._on_strip_scrolled)
+            pane.gap_resized.connect(self._on_gap_resized)
+            pane.point_picked.connect(self._on_point_picked)
+            pane.relayout_requested.connect(self._on_relayout)
+            pane.set_view_mode(self.act_continuous.isChecked())
             pane.mark_style = self.mark_style
             pane.scroll.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
             pane.set_tool(self.tool)
@@ -783,6 +830,13 @@ class MainWindow(QMainWindow):
         for r in range(rows):
             self.grid.setRowStretch(r, 1)
         self._selection = None
+        self._strip_position = None
+        self._layouts_key = None
+        self._pick = None
+        if self.reference_uid is not None and all(s.uid != self.reference_uid for s in self.sessions):
+            self.reference_uid = None      # a referência foi fechada: volta a ser o 1º PDF
+        self._update_roles()
+        self.update_alignment()
         self.refresh()
         self._refresh_marks_panel()
 
@@ -809,6 +863,17 @@ class MainWindow(QMainWindow):
 
     def realign(self) -> None:
         self._alignment_touched = True
+        if self.sessions and self.nav.by_rows:
+            primary = self.reference_index()
+            for j in range(len(self.sessions)):
+                if self._align_key(primary, j):
+                    self.align_store.clear(self._align_key(primary, j))
+            self._align_version += 1
+            self._strip_position = None
+            self.update_alignment()
+            self.refresh()
+            self.statusBar().showMessage(tr("Ajustes manuais do alinhamento desfeitos."), 3000)
+            return
         if self.sessions:
             self.nav.realign()
             self.refresh()
@@ -816,13 +881,28 @@ class MainWindow(QMainWindow):
 
     def _on_pane_step(self, index: int, delta: int) -> None:
         self._user_busy()
+        if self.act_continuous.isChecked() and self.nav.by_rows:
+            page = self.panes[index].top_page() if index < len(self.panes) else None
+            self._continuous_go(index, (page or 0) + delta)
+            return
         self._alignment_touched = True
+        self._strip_position = None
+        if self.nav.by_rows:
+            self.nudge_alignment(index, delta=delta)
+            return
         self.nav.step_pane(index, delta)
         self.refresh()
 
     def _on_pane_jump(self, index: int, page: int) -> None:
         self._user_busy()
+        if self.act_continuous.isChecked() and self.nav.by_rows:
+            self._continuous_go(index, page)
+            return
         self._alignment_touched = True
+        self._strip_position = None
+        if self.nav.by_rows:
+            self.nudge_alignment(index, target=page)
+            return
         self.nav.show_page(index, page)
         self.refresh()
 
@@ -842,6 +922,9 @@ class MainWindow(QMainWindow):
         active = bool(self._query)
         if self.act_diff.isChecked() and self.runner.batches:
             self._ensure_batches()
+        if self.act_continuous.isChecked() and self.panes:
+            self._refresh_continuous(active)
+            return
         selected = self.selected_annotation()
         if self._selection is not None and (selected is None or self.nav.page_for(self._selection[0]) != selected.page):
             self._selection = None   # a marcação selecionada saiu de vista
@@ -855,8 +938,12 @@ class MainWindow(QMainWindow):
             diff = self.nav.current_diff(i)
             if diff is not None and diff.page != page:
                 diff = None
+            blank = ""
+            if page is None and self.nav.by_rows:
+                blank = tr("Sem página correspondente neste PDF.\nO conteúdo dos outros PDFs nesta posição "
+                           "foi incluído neles ou removido deste.")
             pane.render(page, self.nav.raw_page(i), self.nav.page_hits(i, page), current, self.zoom_mode,
-                        self.nav.page_diffs(i, page), diff, self.page_annotations(i, page))
+                        self.nav.page_diffs(i, page), diff, self.page_annotations(i, page), blank)
             position = self.nav.hit_index[i] if current is not None else -1
             pane.set_hit_status(active, self.nav.hit_count(i), position)
         self._update_ui_state()
@@ -941,6 +1028,7 @@ class MainWindow(QMainWindow):
     def _on_index_progress(self, done: int, total: int) -> None:
         if total <= 0:
             self.progress.hide()
+            self.update_alignment()
             if self._query:
                 self.run_search()
             self.update_diff()
@@ -956,6 +1044,7 @@ class MainWindow(QMainWindow):
         if mode is None:
             return
         self.zoom_mode = mode
+        self._strip_position = None   # rolagem contínua: volta à posição atual na nova escala
         self._sync_zoom_combo()
         self.settings.setValue("view/zoom", str(mode))
         self.refresh()
@@ -1018,7 +1107,12 @@ class MainWindow(QMainWindow):
         self.act_first.setEnabled(has and not self.nav.at_start)
         self.act_next.setEnabled(has and not self.nav.at_end)
         self.act_last.setEnabled(has and not self.nav.at_end)
-        self.act_realign.setEnabled(has and not self.nav.is_aligned)
+        if self.nav.by_rows:
+            self.act_realign.setEnabled(has and self._has_manual_alignment())
+            self.act_realign.setToolTip(tr("Desfazer os ajustes manuais do alinhamento por conteúdo (Ctrl+L)"))
+        else:
+            self.act_realign.setEnabled(has and not self.nav.is_aligned)
+            self.act_realign.setToolTip(self._realign_tip)
         has_hits = has and self.nav.total_hits > 0
         self.act_hit_next.setEnabled(has_hits)
         self.act_hit_prev.setEnabled(has_hits)
@@ -1034,10 +1128,17 @@ class MainWindow(QMainWindow):
             hint = tr("Abra ou arraste de 2 a 6 PDFs para começar  (Ctrl+O)")
         elif n == 1:
             hint = tr("Adicione pelo menos mais um PDF para comparar.")
+        elif self.act_continuous.isChecked() and self.nav.by_rows:
+            hint = tr("Role qualquer PDF: os outros acompanham  ·  botão direito: inserir espaço ou "
+                      "alinhar um trecho  ·  arraste a alça de um espaço para ajustar")
+        elif self.nav.by_rows:
+            hint = tr("◀ ▶ ou setas do teclado: avançam todos juntos  ·  ◀ ▶ de um painel: escolhem qual "
+                      "página dele fica ao lado da referência")
         else:
             hint = (tr("◀ ▶ ou setas do teclado: avançam todos juntos  ·  "
                     "botões de cada painel: ajustam só aquele PDF  ·  Ctrl+F: pesquisar em todos"))
-        self.hint_label.setText(hint)
+        self._hint_text = hint
+        self.hint_label.setText("" if self.batch_bar.isVisibleTo(self) else hint)
 
     # ======================================================================
     # Diálogos e preferências
@@ -1073,6 +1174,8 @@ class MainWindow(QMainWindow):
             ("Ctrl+C / Ctrl+V / Delete", tr("Copiar, colar ou excluir a marcação selecionada")),
             ("Esc", tr("Cancelar o desenho, desmarcar ou voltar à seleção")),
             ("Ctrl+Shift+M", tr("Mostrar/ocultar a lista de marcações")),
+            ("Ctrl+Shift+L", tr("Alinhar por conteúdo")),
+            ("Ctrl+Shift+C", tr("Rolagem contínua")),
             ("Ctrl+,", tr("Configurações")),
             (tr("Ctrl + roda do mouse"), "Zoom"),
             ("Ctrl++ / Ctrl+-", tr("Aumentar / diminuir zoom")),
@@ -1508,6 +1611,9 @@ class MainWindow(QMainWindow):
             self.remove_annotation(index, annotation_id)
 
     def escape(self) -> None:
+        if self._pick is not None:
+            self._end_pick(tr("Alinhamento de trecho cancelado."))
+            return
         if any([pane.cancel_drawing() for pane in self.panes]):
             return
         if self._selection is not None:
@@ -1518,6 +1624,7 @@ class MainWindow(QMainWindow):
     def _on_annotation_menu(self, index: int, page: int, x: float, y: float, global_pos: QPoint) -> None:
         found = find_at(self.document_annotations(index), page, x, y)
         if found is None:
+            self._pane_menu(index, global_pos, page, y)
             return
         self._select((index, found.id))
         menu = QMenu(self)
@@ -1640,9 +1747,10 @@ class MainWindow(QMainWindow):
             self.next_diff_all(+1)
 
     def _diff_signature(self, indexes) -> tuple:
-        offsets = tuple(s.offset for s in self.sessions)
+        offsets = self._alignment_key()
         return (tuple(s.uid for s in self.sessions), tuple(id(i) for i in indexes),
-                self.compare.batch_size, offsets, self.indexer.ocr_enabled, self.indexer.ocr_language)
+                self.compare.batch_size, offsets, self.indexer.ocr_enabled, self.indexer.ocr_language,
+                self.chain_mode, self.reference_index())
 
     def update_diff(self) -> None:
         """(Re)planeja a comparação em lotes e pede os lotes necessários."""
@@ -1668,10 +1776,16 @@ class MainWindow(QMainWindow):
             signature = signature[:3] + self._batch_signature[3:4] + signature[4:]
         self._adopt_offsets = False
         if not self._same_plan(signature):
-            ref_offset = self.sessions[0].offset
-            offsets = [ref_offset - s.offset for s in self.sessions]   # página do PDF i = página da referência + isto
+            primary = self.reference_index()
+            ref_offset = self.sessions[primary].offset
+            offsets = [ref_offset - s.offset for s in self.sessions]   # página do PDF i = página da principal + isto
             options = f"ocr={int(self.indexer.ocr_enabled)}:{self.indexer.ocr_language}"
-            self.runner.configure(indexes, keys, offsets, self.compare.batch_size, options)
+            plan = None
+            if self.nav.by_rows:
+                plan = plan_batches_from_rows(self.nav.rows, [s.page_count for s in self.sessions],
+                                              self.compare.batch_size, primary)
+            self.runner.configure(indexes, keys, offsets, self.compare.batch_size, options,
+                                  pairs=self.comparison_pairs(), primary=primary, batches=plan)
             self._batch_signature = signature
             self.nav.clear_diffs()
             if self.compare.next_mode != NEXT_AUTO and self.runner.batches:
@@ -1691,8 +1805,9 @@ class MainWindow(QMainWindow):
     def _batch_at_view(self) -> int:
         if not self.runner.batches or not self.sessions:
             return 0
-        ref = self.sessions[0]
-        page = min(max(self.nav.raw_page(0), 0), max(ref.page_count - 1, 0))
+        primary = self.reference_index()
+        ref = self.sessions[primary]
+        page = min(max(self.nav.raw_page(primary), 0), max(ref.page_count - 1, 0))
         return batch_for_page(self.runner.batches, page)
 
     def _ensure_batches(self) -> None:
@@ -1717,10 +1832,16 @@ class MainWindow(QMainWindow):
 
     REALIGN_DELAY_MS = 1000
 
+    def _alignment_key(self) -> tuple:
+        """O que define as páginas de cada lote: os deslocamentos ou o alinhamento por conteúdo."""
+        if self.nav.by_rows:
+            return ("rows", rows_key(self.nav.rows))
+        return tuple(s.offset for s in self.sessions)
+
     def _plan_offsets_differ(self) -> bool:
         if self._batch_signature is None:
             return False
-        return tuple(s.offset for s in self.sessions) != self._batch_signature[3]
+        return self._alignment_key() != self._batch_signature[3]
 
     def _alignment_settled(self) -> None:
         """O usuário parou de ajustar o alinhamento: recompara ou oferece "Recomparar"."""
@@ -1767,7 +1888,11 @@ class MainWindow(QMainWindow):
         if not (0 <= number < len(self.runner.batches)):
             return
         start = self.runner.batches[number].ref_range[0]
-        self.nav.go_to(start + self.sessions[0].offset)
+        primary = self.reference_index()
+        if self.nav.by_rows:
+            self.nav.go_to(self.nav.row_of(primary, start) or 0)
+        else:
+            self.nav.go_to(start + self.sessions[primary].offset)
         self.refresh()
         self._update_batch_status()
 
@@ -1802,7 +1927,8 @@ class MainWindow(QMainWindow):
         multi = on and len(batches) > 1
         current = self._batch_at_view() if batches else 0
         self.batch_bar.setVisible(multi or (on and self.runner.busy))
-        self.hint_label.setVisible(not self.batch_bar.isVisibleTo(self))   # dá espaço à barra de lotes
+        # dá espaço à barra de lotes (sem mostrar a dica por cima de uma mensagem temporária)
+        self.hint_label.setText("" if self.batch_bar.isVisibleTo(self) else self._hint_text)
         self.batch_label.setVisible(multi)
         self.batch_prev_btn.setVisible(multi)
         self.batch_next_btn.setVisible(multi)
@@ -1850,13 +1976,427 @@ class MainWindow(QMainWindow):
         self.diff_label.show()
 
     def diff_summary(self) -> str:
+        ref = self.reference_index()
         if self.nav.total_diffs == 0:
-            return tr("Texto idêntico ao do 1º PDF")
+            if self.chain_mode:
+                return tr("Texto idêntico em todos os PDFs")
+            return tr("Texto idêntico ao da referência ({name})", name=self.sessions[ref].name)
         parts = []
-        for i, session in enumerate(self.sessions[1:], start=1):
-            c = count_by_kind(self.nav.diffs[i])
-            parts.append(f"{session.name}: +{c[ADDED]} −{c[REMOVED]} ~{c[CHANGED]}")
-        return tr("Diferenças em relação a {name} — {parts}", name=self.sessions[0].name, parts=" · ".join(parts))
+        for a, b in self.comparison_pairs():
+            c = count_by_kind(self.nav.diffs[b])
+            parts.append(f"{self.sessions[b].name}: +{c[ADDED]} −{c[REMOVED]} ~{c[CHANGED]}")
+        if self.chain_mode:
+            return tr("Em cadeia (cada PDF com o anterior) — {parts}", parts=" · ".join(parts))
+        return tr("Diferenças em relação a {name} — {parts}", name=self.sessions[ref].name, parts=" · ".join(parts))
+
+    # --- alinhamento por conteúdo -------------------------------------------------------
+    def _align_key(self, a: int, b: int) -> Optional[str]:
+        fa, fb = self.annotation_key(a), self.annotation_key(b)
+        return AlignmentStore.key(fa, fb) if fa and fb else None
+
+    def _has_manual_alignment(self) -> bool:
+        primary = self.reference_index()
+        return any(self.align_store.has_manual(k) for j in range(len(self.sessions))
+                   if (k := self._align_key(primary, j)))
+
+    def _pair_match(self, a: int, b: int) -> Optional[PairMatch]:
+        ia, ib = self.indexer.index_for(self.sessions[a]), self.indexer.index_for(self.sessions[b])
+        if ia is None or ib is None or not ia.complete or not ib.complete:
+            return None
+        key = (self.annotation_key(a), self.annotation_key(b), self.indexer.ocr_enabled, self.indexer.ocr_language)
+        if key not in self._matches:
+            if len(self._matches) > 30:
+                self._matches.clear()
+            self._matches[key] = match_lines(ia, ib)
+        return self._matches[key]
+
+    def toggle_content_align(self) -> None:
+        self.settings.setValue("view/content_align", self.act_content_align.isChecked())
+        self.update_alignment(announce=True)
+        self.refresh()
+
+    def update_alignment(self, announce: bool = False) -> None:
+        """Liga, desliga ou recalcula o alinhamento por conteúdo (páginas lado a lado)."""
+        primary = self.reference_index()
+        if not self.act_content_align.isChecked() or len(self.sessions) < 2:
+            if self.nav.by_rows:
+                self.nav.set_rows(None, follow=primary)
+            return
+        pairs = {}
+        for j in range(len(self.sessions)):
+            if j == primary:
+                continue
+            match = self._pair_match(primary, j)
+            key = self._align_key(primary, j)
+            if match is None or key is None:
+                if announce:
+                    self.statusBar().showMessage(tr("Alinhando por conteúdo… aguardando a leitura dos PDFs."), 4000)
+                return   # tenta de novo quando a leitura terminar
+            pairs[j] = align_pages(match, self.align_store.manual_pages(key))
+        rows = build_rows([s.page_count for s in self.sessions], primary, pairs)
+        if rows != self.nav.rows:
+            self.nav.set_rows(rows, follow=primary)
+        if announce:
+            extra = sum(1 for row in rows if row[primary] is None)
+            missing = sum(1 for row in rows if row[primary] is not None and None in row)
+            self.statusBar().showMessage(
+                tr("Alinhado por conteúdo: {extra} posição(ões) com páginas incluídas e {missing} com páginas "
+                   "removidas em relação a {name}.", extra=extra, missing=missing, name=self.sessions[primary].name),
+                6000)
+
+    def nudge_alignment(self, index: int, delta: int = 0, target: Optional[int] = None) -> None:
+        """◀ ▶ ou página digitada em um painel, com o alinhamento por conteúdo ligado.
+
+        Fixa à mão qual página deste PDF fica ao lado da página atual da referência.
+        """
+        primary = self.reference_index()
+        rows = self.nav.rows
+        if not rows:
+            return
+        ref_page = self.nav.page_for(primary)
+        if ref_page is None:   # posição sem página da referência: usa a próxima (ou a anterior)
+            ref_page = next((row[primary] for row in rows[self.nav.current:] if row[primary] is not None),
+                            max(self.nav.raw_page(primary), 0))
+        if index == primary:
+            new_ref = ref_page + delta if target is None else target
+            new_ref = max(0, min(new_ref, self.sessions[primary].page_count - 1))
+            for j in range(len(self.sessions)):
+                shown = self.nav.page_for(j) if j != primary else None
+                key = self._align_key(primary, j) if j != primary else None
+                if key and shown is not None:
+                    self.align_store.fix_pages(key, new_ref, shown)
+            ref_page, other_page = new_ref, None
+        else:
+            current = self.nav.page_for(index)
+            base = current if current is not None else self.nav.raw_page(index)
+            other_page = base + delta if target is None else target
+            other_page = max(0, min(other_page, self.sessions[index].page_count - 1))
+            key = self._align_key(primary, index)
+            if key:
+                self.align_store.fix_pages(key, ref_page, other_page)
+        self.update_alignment()
+        row = self.nav.row_of(primary, ref_page)
+        if row is not None:
+            self.nav.go_to(row)
+        self.refresh()
+        if other_page is not None:
+            self.statusBar().showMessage(
+                tr("Página {page} de {name} fixada ao lado da página {ref} de {ref_name}. Realinhar desfaz.",
+                   page=other_page + 1, name=self.sessions[index].name, ref=ref_page + 1,
+                   ref_name=self.sessions[primary].name), 5000)
+
+    # --- rolagem contínua --------------------------------------------------------------
+    def toggle_continuous(self) -> None:
+        on = self.act_continuous.isChecked()
+        self.settings.setValue("view/continuous", on)
+        self._end_pick()
+        for pane in self.panes:
+            pane.set_view_mode(on)
+        self._strip_position = None
+        self._layouts_key = None
+        self.refresh()
+
+    def _page_heights(self, index: int) -> List[float]:
+        session = self.sessions[index]
+        if session.uid not in self._heights:
+            self._heights[session.uid] = self.panes[index].page_heights()
+        return self._heights[session.uid]
+
+    def _gap_key(self, index: int) -> Optional[str]:
+        """Onde ficam os espaços manuais deste PDF (por par com a referência)."""
+        return self._align_key(self.reference_index(), index)
+
+    def strip_layouts(self) -> List[StripLayout]:
+        primary = self.reference_index()
+        scales = [round(p.continuous_scale(self.zoom_mode), 4) for p in self.panes]
+        aligned = self.nav.by_rows
+        key = (tuple(s.uid for s in self.sessions), tuple(scales), aligned, primary, self._align_version,
+               rows_key(self.nav.rows) if aligned else "", self.indexer.ocr_enabled)
+        if key == self._layouts_key:
+            return self._layouts
+        anchors, manual = {}, {}
+        if aligned:
+            for j in range(len(self.sessions)):
+                gap_key = self._gap_key(j)
+                if gap_key:
+                    manual[j] = self.align_store.manual_gaps(gap_key)
+                if j == primary:
+                    continue
+                match = self._pair_match(primary, j)
+                if match is not None and gap_key:
+                    anchors[j] = combined_anchors(match, self.align_store.manual_lines(gap_key))
+        heights = [self._page_heights(i) for i in range(len(self.sessions))]
+        self._layouts = compute_layouts(heights, scales, primary, anchors, manual, aligned)
+        self._layouts_key = key
+        return self._layouts
+
+    def _refresh_continuous(self, active: bool) -> None:
+        layouts = self.strip_layouts()
+        focused = None
+        for i, pane in enumerate(self.panes):
+            scrolled = pane.render_continuous(layouts[i], self.nav.hits[i], self.nav.current_hit(i),
+                                              self.nav.diffs[i], self.nav.current_diff(i),
+                                              self.document_annotations(i))
+            if scrolled and focused is None:
+                focused = i
+            position = self.nav.hit_index[i] if self.nav.current_hit(i) is not None else -1
+            pane.set_hit_status(active, self.nav.hit_count(i), position)
+        if focused is not None:
+            if self.nav.by_rows and self.act_linked_scroll.isChecked():
+                value = self.panes[focused].strip_value()
+                for pane in self.panes:
+                    if pane.index != focused:
+                        pane.scroll_to_strip(value)
+            self._strip_position = self.nav.current
+        elif self._strip_position != self.nav.current:
+            self._scroll_to_position(layouts)
+            self._strip_position = self.nav.current
+        self._update_ui_state()
+
+    def _scroll_to_position(self, layouts: List[StripLayout]) -> None:
+        if self.nav.by_rows and self.nav.rows:
+            row = self.nav.rows[self.nav.current]
+            primary = self.reference_index()
+            doc = primary if row[primary] is not None else next((d for d, p in enumerate(row) if p is not None), None)
+            if doc is None:
+                return
+            value = layouts[doc].page_top[row[doc]]
+            for pane in self.panes:
+                pane.scroll_to_strip(value)
+            return
+        for i, pane in enumerate(self.panes):
+            page = self.nav.page_for(i)
+            if page is not None:
+                pane.scroll_to_strip(layouts[i].page_top[page])
+
+    def _continuous_go(self, index: int, page: int) -> None:
+        page = max(0, min(page, self.sessions[index].page_count - 1))
+        row = self.nav.row_of(index, page)
+        if row is not None:
+            self.nav.go_to(row)
+        self._strip_position = None
+        self.refresh()
+
+    def _on_strip_scrolled(self, index: int, value: float) -> None:
+        """O usuário rolou um PDF na rolagem contínua: os outros acompanham."""
+        self._user_busy()
+        layouts = self._layouts
+        if index >= len(layouts) or index >= len(self.panes):
+            return
+        if self.act_linked_scroll.isChecked():
+            if self.nav.by_rows:   # alinhados: a mesma altura mostra o mesmo conteúdo
+                for pane in self.panes:
+                    if pane.index != index:
+                        pane.scroll_to_strip(value)
+            else:                  # sem alinhamento: mesma página (com os deslocamentos) e mesma fração
+                page = layouts[index].page_at(value + 4)
+                into = (value - layouts[index].page_top[page]) / max(layouts[index].scale, 1e-6)
+                logical = page + self.sessions[index].offset
+                for j, pane in enumerate(self.panes):
+                    if j == index:
+                        continue
+                    pj = logical - self.sessions[j].offset
+                    if 0 <= pj < self.sessions[j].page_count:
+                        pane.scroll_to_strip(layouts[j].page_top[pj] + into * layouts[j].scale)
+        page = self.panes[index].top_page()
+        if page is not None:
+            if self.nav.by_rows:
+                row = self.nav.row_of(index, page)
+                if row is not None:
+                    self.nav.go_to(row)
+            else:
+                self.nav.go_to(page + self.sessions[index].offset)
+            self._strip_position = self.nav.current
+        if self.act_diff.isChecked() and self.runner.batches:
+            self._ensure_batches()
+            self._update_batch_status()
+        self._update_ui_state()
+
+    def _on_relayout(self, _index: int) -> None:
+        """O painel mudou de tamanho (ajustar à largura): recalcula e volta à posição atual."""
+        if self.act_continuous.isChecked():
+            self._strip_position = None
+            self.refresh()
+
+    def _manual_gap_at(self, index: int, page: int, y: float) -> float:
+        key = self._gap_key(index)
+        for p, gy, h in self.align_store.manual_gaps(key) if key else []:
+            if p == page and abs(gy - y) < 1.0:
+                return h
+        return 0.0
+
+    def _on_gap_resized(self, index: int, page: int, y: float, manual_points: float) -> None:
+        key = self._gap_key(index)
+        if key is None:
+            return
+        self.align_store.set_gap(key, page, y, manual_points)
+        self._after_alignment_edit(tr("Espaço ajustado. Realinhar desfaz os ajustes manuais."))
+
+    def insert_gap(self, index: int, page: int, y: float, points: float = 30.0) -> None:
+        key = self._gap_key(index)
+        if key is None:
+            return
+        self.align_store.set_gap(key, page, y, self._manual_gap_at(index, page, y) + points)
+        self._after_alignment_edit(tr("Espaço inserido. Arraste a alça embaixo dele para ajustar a altura."))
+
+    def remove_gap(self, index: int, gap) -> None:
+        key = self._gap_key(index)
+        if key is None or gap is None:
+            return
+        scale = self._layouts[index].scale if index < len(self._layouts) else 1.0
+        self.align_store.set_gap(key, gap.page, gap.y, -gap.auto / max(scale, 1e-6))
+        self._after_alignment_edit(tr("Espaço removido. Realinhar desfaz os ajustes manuais."))
+
+    def start_pick(self, index: int, page: int, y: float) -> None:
+        self._pick = (index, page, y)
+        for pane in self.panes:
+            pane.pick_mode = pane.index != index
+            pane.canvas.setCursor(Qt.CursorShape.CrossCursor if pane.pick_mode else Qt.CursorShape.ForbiddenCursor)
+        self.statusBar().showMessage(tr("Agora clique no trecho correspondente em outro PDF (Esc cancela)."), 10000)
+
+    def _end_pick(self, message: str = "") -> None:
+        self._pick = None
+        for pane in self.panes:
+            pane.pick_mode = False
+            pane.set_tool(self.tool)
+        if message:
+            self.statusBar().showMessage(message, 4000)
+
+    def _on_point_picked(self, index: int, page: int, y: float) -> None:
+        if self._pick is None or index == self._pick[0]:
+            return
+        first, page_a, y_a = self._pick
+        primary = self.reference_index()
+        layouts = self.strip_layouts()
+
+        def on_primary(doc: int, p: int, yy: float) -> Tuple[int, float]:
+            if doc == primary:
+                return p, yy
+            return layouts[primary].from_strip(layouts[doc].to_strip(p, yy))
+
+        if first == primary:
+            other, anchor = index, (page_a, y_a, page, y)
+        elif index == primary:
+            other, anchor = first, (page, y, page_a, y_a)
+        else:   # dois PDFs que não são a referência: liga pelo ponto da referência ao lado do 2º
+            pp, py = on_primary(index, page, y)
+            other, anchor = first, (pp, py, page_a, y_a)
+        key = self._gap_key(other)
+        self._end_pick()
+        if key is None:
+            return
+        self.align_store.add_line(key, anchor)
+        self._after_alignment_edit(tr("Trechos alinhados. Realinhar desfaz os ajustes manuais."))
+
+    def _after_alignment_edit(self, message: str) -> None:
+        self._align_version += 1
+        self.refresh()
+        self.statusBar().showMessage(message, 5000)
+
+    # --- referência / cadeia ----------------------------------------------------------
+    def reference_index(self) -> int:
+        """Índice do PDF de referência (no modo em cadeia, o primeiro)."""
+        if not self.chain_mode and self.reference_uid is not None:
+            for i, s in enumerate(self.sessions):
+                if s.uid == self.reference_uid:
+                    return i
+        return 0
+
+    def comparison_pairs(self) -> List[Tuple[int, int]]:
+        n = len(self.sessions)
+        if self.chain_mode:
+            return [(i - 1, i) for i in range(1, n)]
+        ref = self.reference_index()
+        return [(ref, i) for i in range(n) if i != ref]
+
+    def set_reference(self, index: int) -> None:
+        if not (0 <= index < len(self.sessions)):
+            return
+        self.reference_uid = self.sessions[index].uid
+        self.chain_mode = False
+        self._comparison_changed(tr("Referência da comparação: {name}", name=self.sessions[index].name))
+
+    def set_chain_mode(self, on: Optional[bool] = None) -> None:
+        self.chain_mode = self.act_chain.isChecked() if on is None else bool(on)
+        self._comparison_changed(tr("Comparação em cadeia: cada PDF com o anterior.") if self.chain_mode
+                                 else tr("Comparação com a referência."))
+
+    def _comparison_changed(self, message: str) -> None:
+        self.act_chain.setChecked(self.chain_mode)
+        self._batch_signature = None
+        self._update_roles()
+        self.update_alignment()
+        if self.act_diff.isChecked():
+            self.update_diff()
+        self.statusBar().showMessage(message, 4000)
+
+    def _update_roles(self) -> None:
+        ref = self.reference_index()
+        for i, pane in enumerate(self.panes):
+            if len(self.panes) < 2:
+                pane.set_role("")
+            elif self.chain_mode:
+                pane.set_role(tr("{n}º", n=i + 1),
+                              tr("Comparação em cadeia: este PDF é comparado com o anterior") if i else
+                              tr("Comparação em cadeia: início"))
+            else:
+                pane.set_role(tr("Referência") if i == ref else "",
+                              tr("Os outros PDFs são comparados com este. Clique com o botão direito em outro "
+                                 "PDF para mudar a referência."))
+
+    def _fill_reference_menu(self) -> None:
+        from PySide6.QtGui import QActionGroup
+
+        menu = self.reference_menu
+        menu.clear()
+        group = QActionGroup(menu)
+        ref = self.reference_index()
+        for i, s in enumerate(self.sessions):
+            action = menu.addAction(s.name, lambda i=i: self.set_reference(i))
+            action.setCheckable(True)
+            action.setChecked(not self.chain_mode and i == ref)
+            group.addAction(action)
+        if self.sessions:
+            menu.addSeparator()
+        menu.addAction(self.act_chain)
+        group.addAction(self.act_chain)
+        self.act_chain.setChecked(self.chain_mode)
+        self.act_chain.setEnabled(len(self.sessions) >= 3 or self.chain_mode)
+
+    def _pane_menu(self, index: int, global_pos: QPoint, page: Optional[int] = None,
+                   y: Optional[float] = None) -> None:
+        if len(self.sessions) < 2:
+            return
+        menu = QMenu(self)
+        insert = remove = pick = None
+        if self.act_continuous.isChecked() and self.nav.by_rows and page is not None:
+            gap = self.panes[index].last_context_gap
+            insert = menu.addAction(tr("Inserir espaço aqui"))
+            if gap is not None:
+                remove = menu.addAction(tr("Remover este espaço"))
+                page, y = gap.page, gap.y
+            pick = menu.addAction(tr("Alinhar este trecho com…"))
+            pick.setToolTip(tr("Depois, clique no trecho correspondente em outro PDF"))
+            menu.addSeparator()
+        use = menu.addAction(tr("Usar como referência da comparação"))
+        use.setEnabled(self.chain_mode or index != self.reference_index())
+        chain = menu.addAction(tr("Comparar em cadeia (cada PDF com o anterior)"))
+        chain.setCheckable(True)
+        chain.setChecked(self.chain_mode)
+        chain.setEnabled(len(self.sessions) >= 3)
+        chosen = menu.exec(global_pos)
+        if chosen is not None and chosen in (insert, remove, pick):
+            if chosen is insert:
+                self.insert_gap(index, page, y)
+            elif chosen is remove:
+                self.remove_gap(index, self.panes[index].last_context_gap)
+            else:
+                self.start_pick(index, page, y)
+            return
+        if chosen is use:
+            self.set_reference(index)
+        elif chosen is chain:
+            self.set_chain_mode(not self.chain_mode)
 
     def next_diff_all(self, delta: int) -> None:
         if self.nav.step_diff_all(delta):
