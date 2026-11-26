@@ -864,8 +864,6 @@ EN = {
         'Only asks GitHub for the latest version number. Nothing is downloaded or installed unless you ask.',
     'Atualizações':
         'Updates',
-    ' % da página':
-        ' % of the page',
     'Abrangência da &comparação':
         'Comparison &scope',
     'Com o alinhamento por conteúdo ligado, cada trecho é comparado com o trecho que você alinhou a ele':
@@ -874,8 +872,6 @@ EN = {
         'Comparing the whole document.',
     'Comparando só a página atual: a comparação acompanha a navegação.':
         'Comparing only the current page: the comparison follows as you navigate.',
-    'Comparar':
-        'Compare',
     'Comparar apenas as páginas à vista; a comparação acompanha quando você muda de página':
         'Compare only the pages in view; the comparison follows when you change pages',
     'Comparar o documento inteiro':
@@ -938,4 +934,50 @@ EN = {
         '{n} page ignored',
     '{n} páginas ignoradas':
         '{n} pages ignored',
+    ' % da altura':
+        ' % of the height',
+    ' % da largura':
+        ' % of the width',
+    ' dente(s) da roda':
+        ' wheel notch(es)',
+    'Cabeçalho e rodapé detectados ({h}% / {f}%): ficam fora da comparação. Arraste as linhas na página para ajustar.':
+        'Header and footer detected ({h}% / {f}%): they are left out of the comparison. Drag the lines on the page to adjust.',
+    'Cabeçalho ignorado':
+        'Ignored header',
+    'Com a comparação ligada, as faixas aparecem sombreadas e as linhas podem ser arrastadas na própria página (a partir da borda, para criar uma faixa).':
+        'With the comparison on, the bands are shaded and their lines can be dragged on the page itself (from the edge, to create a band).',
+    'Ignorar também faixas nas laterais':
+        'Also ignore bands on the sides',
+    'Lateral direita':
+        'Right side',
+    'Lateral direita ignorada':
+        'Ignored right side',
+    'Lateral esquerda':
+        'Left side',
+    'Lateral esquerda ignorada':
+        'Ignored left side',
+    'Passar de página após':
+        'Turn the page after',
+    'Procura texto que se repete no topo e na base das páginas e ajusta as faixas; depois você pode arrastar as linhas na página':
+        'Looks for text repeated at the top and bottom of the pages and sets the bands; you can then drag the lines on the page',
+    'Rodapé ignorado':
+        'Ignored footer',
+    'Uma página por vez: depois de chegar ao fim (ou ao início) da página, quantos dentes a mais da roda do mouse passam para a página seguinte (ou anterior). Exibir › Rolar para a próxima página liga/desliga.':
+        'One page at a time: after reaching the end (or the top) of the page, how many more mouse-wheel notches turn to the next (or previous) page. View › Scroll to the next page turns it on/off.',
+    'da altura':
+        'of the height',
+    'da largura':
+        'of the width',
+    '{band}: nada (comparar tudo)':
+        '{band}: none (compare everything)',
+    '{band}: {pct}% {unit}':
+        '{band}: {pct}% {unit}',
+    'Alinhamento e páginas':
+        'Alignment and pages',
+    'Detectar ao abrir os PDFs (até {n}% do topo e da base)':
+        'Detect when opening PDFs (up to {n}% from the top and bottom)',
+    'Faixas ignoradas em todas as páginas':
+        'Bands ignored on every page',
+    'Não ignorar':
+        'Do not ignore',
 }

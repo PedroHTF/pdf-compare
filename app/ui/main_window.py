@@ -56,7 +56,10 @@ from app.services.annotations import (
 )
 from app.services.batch_runner import BatchRunner
 from app.services.compare_scope import (
+    MAX_ZONE,
     IgnoredPagesStore,
+    detect_bands,
+    merge_detected,
     format_pages,
     page_geometry,
     parse_pages,
@@ -203,6 +206,7 @@ class MainWindow(QMainWindow):
         self._scoped: Dict[tuple, object] = {}       # índices sem cabeçalho/rodapé/páginas ignoradas
         self._geometry: Dict[int, list] = {}         # geometria das páginas por PDF (uid)
         self._page_only_pages: Optional[tuple] = None   # páginas comparadas em "só a página atual"
+        self._bands_detected_for: Optional[tuple] = None   # PDFs em que o cabeçalho/rodapé já foi detectado
         self._align_version = 0                     # muda a cada ajuste manual (espaços, trechos)
         self._layouts_key: Optional[tuple] = None
         self._layouts: List[StripLayout] = []
@@ -904,7 +908,11 @@ class MainWindow(QMainWindow):
             pane.relayout_requested.connect(self._on_relayout)
             pane.page_flip.connect(self._on_page_flip)
             pane.scope_provider = lambda page, i=i: self.scope_marks(i, page)
+            pane.band_provider = self.band_values
+            pane.band_changed.connect(self.set_band)
+            pane.band_dragging.connect(self._on_band_dragging)
             pane.wheel_flip = self.act_wheel_flip.isChecked()
+            pane.wheel_notches = self.wheel_notches()
             pane.set_view_mode(self.act_continuous.isChecked())
             pane.mark_style = self.mark_style
             pane.scroll.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
@@ -1132,6 +1140,8 @@ class MainWindow(QMainWindow):
     def _on_index_progress(self, done: int, total: int) -> None:
         if total <= 0:
             self.progress.hide()
+            if self._auto_detect_bands():
+                return                 # já refez alinhamento e comparação com as faixas novas
             self.update_alignment()
             if self._query:
                 self.run_search()
@@ -1948,15 +1958,26 @@ class MainWindow(QMainWindow):
         tessdata = ocr.find_tessdata()
         langs = ", ".join(ocr.installed_languages(tessdata)) or tr("nenhum (Tesseract não encontrado)")
         values = SettingsValues(str(self.settings.value("app/language", language())), self.ocr_language(),
-                                self.prefs.diff_colors(), self.mark_style, self.compare, self.updates_enabled())
+                                self.prefs.diff_colors(), self.mark_style, self.compare, self.updates_enabled(),
+                                self.wheel_notches())
         dialog = SettingsDialog(values, tr("Idiomas instalados: {langs}. Use + para combinar (ex.: eng+por).",
                                            langs=langs), self,
                                 cache_info=self.cache_summary, clear_cache=self.clear_diff_cache)
         if dialog.exec():
             self.apply_settings(dialog.values())
 
+    def wheel_notches(self) -> int:
+        try:
+            return min(max(int(self.settings.value("view/wheel_notches", 1)), 1), 10)
+        except (TypeError, ValueError):
+            return 1
+
     def apply_settings(self, values) -> None:
         self.settings.setValue("updates/check", bool(getattr(values, "check_updates", True)))
+        notches = int(getattr(values, "wheel_notches", 1))
+        self.settings.setValue("view/wheel_notches", notches)
+        for pane in self.panes:
+            pane.wheel_notches = notches
         if values.ocr_language != self.ocr_language():
             self.set_ocr_language(values.ocr_language)
         self.prefs.set_diff_colors(values.diff_colors)
@@ -1990,6 +2011,10 @@ class MainWindow(QMainWindow):
             self.runner.cancel_background()
         self.act_diff_page.setChecked(compare.page_only)
         self.act_diff_whole.setChecked(not compare.page_only)
+        if compare.auto_bands and not old.auto_bands:
+            self._bands_detected_for = None     # ligou a detecção: detecta agora
+            if self._auto_detect_bands():
+                return
         if compare.scope != old.scope:
             self._after_scope_change()
             return
@@ -2341,22 +2366,83 @@ class MainWindow(QMainWindow):
         geometry = self._geometry_for(index)
         if page >= len(geometry):
             return True
-        matrix, height = geometry[page]
-        top, bottom = scope.band(height)
+        matrix, height, width = geometry[page]
         x0, y0, x1, y1 = rect
-        y = (fitz.Point((x0 + x1) / 2, (y0 + y1) / 2) * fitz.Matrix(*matrix)).y
-        return top <= y <= bottom
+        point = fitz.Point((x0 + x1) / 2, (y0 + y1) / 2) * fitz.Matrix(*matrix)
+        return scope.contains(point.x, point.y, width, height)
+
+    def _comparing(self) -> bool:
+        return len(self.sessions) >= 2 and (self.act_diff.isChecked() or self.act_visual_diff.isChecked()
+                                            or self.act_content_align.isChecked())
 
     def scope_marks(self, index: int, page: int):
-        """O que desenhar como "fora da comparação" na página: (ignorada, % cabeçalho, % rodapé) ou None."""
-        if len(self.sessions) < 2 or not (self.act_diff.isChecked() or self.act_visual_diff.isChecked()
-                                          or self.act_content_align.isChecked()):
+        """O que desenhar como "fora da comparação": (ignorada, % cabeçalho, % rodapé, % esq., % dir.) ou None."""
+        if not self._comparing():
             return None
         ignored = index < len(self.sessions) and page in self._ignored(index)
         scope = self.compare.scope
         if not ignored and not scope.active:
             return None
-        return (ignored, scope.header, scope.footer)
+        return (ignored, scope.header, scope.footer, scope.left, scope.right)
+
+    def band_values(self) -> Optional[Dict[str, float]]:
+        """Faixas que se arrastam na página (com a comparação ligada)."""
+        if not self._comparing():
+            return None
+        c = self.compare
+        bands = {"header": c.header, "footer": c.footer}
+        if c.sides:
+            bands.update(left=c.left, right=c.right)
+        return bands
+
+    def _band_label(self, kind: str, percent: float) -> str:
+        names = {"header": tr("Cabeçalho ignorado"), "footer": tr("Rodapé ignorado"),
+                 "left": tr("Lateral esquerda ignorada"), "right": tr("Lateral direita ignorada")}
+        if percent <= 0:
+            return tr("{band}: nada (comparar tudo)", band=names[kind])
+        unit = tr("da altura") if kind in ("header", "footer") else tr("da largura")
+        return tr("{band}: {pct}% {unit}", band=names[kind], pct=f"{percent:g}", unit=unit)
+
+    def _on_band_dragging(self, kind: str, percent: float) -> None:
+        self.statusBar().showMessage(self._band_label(kind, percent), 3000)
+
+    def set_band(self, kind: str, percent: float) -> None:
+        """O usuário arrastou a linha de uma faixa na página."""
+        from dataclasses import replace
+
+        percent = round(min(max(percent, 0.0), MAX_ZONE), 1)
+        if getattr(self.compare, kind) == percent:
+            return
+        self.set_compare_settings(replace(self.compare, **{kind: percent}))
+        self.statusBar().showMessage(self._band_label(kind, percent), 5000)
+
+    def _auto_detect_bands(self) -> bool:
+        """Ao terminar de ler os PDFs: sugere cabeçalho e rodapé (texto repetido, até 40%).
+
+        Roda uma vez por conjunto de PDFs; depois o usuário ajusta arrastando as linhas.
+        Devolve True se mudou as faixas (e já refez alinhamento e comparação).
+        """
+        if not self.compare.auto_bands or len(self.sessions) < 2:
+            return False
+        keys = tuple(self.annotation_key(i) for i in range(len(self.sessions)))
+        if None in keys or keys == self._bands_detected_for:
+            return False
+        indexes = [self.indexer.index_for(s) for s in self.sessions]
+        if any(i is None or not i.complete for i in indexes):
+            return False
+        self._bands_detected_for = keys
+        header, footer = merge_detected(detect_bands(idx, self._geometry_for(i), MAX_ZONE)
+                                        for i, idx in enumerate(indexes))
+        if (header, footer) == (self.compare.header, self.compare.footer):
+            return False
+        from dataclasses import replace
+
+        self.set_compare_settings(replace(self.compare, header=header, footer=footer))
+        if header or footer:
+            self.statusBar().showMessage(
+                tr("Cabeçalho e rodapé detectados ({h}% / {f}%): ficam fora da comparação. Arraste as linhas "
+                   "na página para ajustar.", h=f"{header:g}", f=f"{footer:g}"), 10000)
+        return True
 
     def _after_scope_change(self, message: str = "") -> None:
         """Mudou o que entra na comparação: refaz o alinhamento, a comparação e o desenho."""

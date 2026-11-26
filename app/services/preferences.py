@@ -69,13 +69,19 @@ class CompareSettings:
     cache_days: int = DEFAULT_RETENTION_DAYS    # 0 = nunca apagar
     realign_mode: str = REALIGN_ON_CLICK
     visual_sensitivity: int = DEFAULT_SENSITIVITY   # diferença visual: 1 (pouco) a 100 (muito sensível)
-    header: int = 0                         # % da altura ignorada no topo de cada página (0 = não ignorar)
-    footer: int = 0                         # % ignorada na base de cada página
+    header: float = 0.0                     # % da altura ignorada no topo de cada página (0 = não ignorar)
+    footer: float = 0.0                     # % ignorada na base de cada página
+    auto_bands: bool = True                 # detectar cabeçalho e rodapé ao abrir os PDFs (até 40%)
+    sides: bool = False                     # faixas laterais (esquerda / direita) habilitadas
+    left: float = 0.0                       # % da largura ignorada à esquerda
+    right: float = 0.0                      # % ignorada à direita
     follow_alignment: bool = True           # a comparação segue os trechos/páginas alinhados à mão
     page_only: bool = False                 # comparar só a página atual (em vez do documento inteiro)
 
     @property
     def scope(self) -> CompareScope:
+        if self.sides:
+            return CompareScope(self.header, self.footer, self.left, self.right)
         return CompareScope(self.header, self.footer)
 
 
@@ -117,11 +123,22 @@ class Preferences:
             lookahead=self._int("compare/lookahead", d.lookahead, 0, 1000),
             pause_while_busy=bool(pause),
             cache_days=self._int("compare/cache_days", d.cache_days, 0, 3650),
-            header=self._int("compare/header", d.header, 0, MAX_ZONE),
-            footer=self._int("compare/footer", d.footer, 0, MAX_ZONE),
+            header=self._float("compare/header", d.header, 0, MAX_ZONE),
+            footer=self._float("compare/footer", d.footer, 0, MAX_ZONE),
+            auto_bands=self._bool("compare/auto_bands", d.auto_bands),
+            sides=self._bool("compare/sides", d.sides),
+            left=self._float("compare/left", d.left, 0, MAX_ZONE),
+            right=self._float("compare/right", d.right, 0, MAX_ZONE),
             follow_alignment=self._bool("compare/follow_alignment", d.follow_alignment),
             page_only=self._bool("compare/page_only", d.page_only),
         )
+
+    def _float(self, key: str, default: float, low: float, high: float) -> float:
+        try:
+            value = float(self.settings.value(key, default))
+        except (TypeError, ValueError):
+            return default
+        return round(min(max(value, low), high), 1)
 
     def _bool(self, key: str, default: bool) -> bool:
         value = self.settings.value(key, default)
@@ -139,6 +156,10 @@ class Preferences:
         self.settings.setValue("compare/visual_sensitivity", c.visual_sensitivity)
         self.settings.setValue("compare/header", c.header)
         self.settings.setValue("compare/footer", c.footer)
+        self.settings.setValue("compare/auto_bands", c.auto_bands)
+        self.settings.setValue("compare/sides", c.sides)
+        self.settings.setValue("compare/left", c.left)
+        self.settings.setValue("compare/right", c.right)
         self.settings.setValue("compare/follow_alignment", c.follow_alignment)
         self.settings.setValue("compare/page_only", c.page_only)
 

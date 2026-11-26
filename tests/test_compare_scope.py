@@ -138,7 +138,7 @@ def test_ignore_header_footer_in_window(window, tmp_path, qtbot):
     w.set_compare_settings(CompareSettings(header=10, footer=5))
     _idle(qtbot, w)
     assert w.nav.total_diffs == 0 and "sem cabeçalho e rodapé" in w.diff_label.text()
-    assert w.scope_marks(0, 0) == (False, 10, 5)
+    assert w.scope_marks(0, 0) == (False, 10, 5, 0, 0)
     w.panes[0].grab()                                        # desenha as faixas ignoradas
 
 
@@ -156,7 +156,7 @@ def test_ignore_page_from_menu_and_dialog(window, tmp_path, qtbot):
     w.toggle_ignored_page(1, 0)
     _idle(qtbot, w)
     assert w.nav.total_diffs == 0 and "2 páginas ignoradas" in w.diff_label.text()
-    assert w.scope_marks(1, 0) == (True, 0, 0) and w.scope_marks(1, 1) is None
+    assert w.scope_marks(1, 0) == (True, 0, 0, 0, 0) and w.scope_marks(1, 1) is None
     w.panes[1].grab()
 
     def fill():
@@ -252,3 +252,170 @@ def test_wheel_past_the_page_edge_turns_the_page(window, tmp_path, qtbot):
     bar.setValue(bar.maximum())
     wheel(-120)
     assert w.nav.page_for(0) == 0
+
+
+# --- faixas: detecção automática, arrastar na página, laterais, dentes da roda ---------------------
+from app.services.compare_scope import detect_bands, merge_detected  # noqa: E402
+
+
+def _body(k):
+    return [f"Texto proprio da pagina {k} numero {k * 7} linha {n}" for n in range(6)]
+
+
+def _detect(path):
+    doc = fitz.open(str(path))
+    return detect_bands(DocumentIndex.build(doc), page_geometry(doc))
+
+
+def test_detect_header_and_footer(tmp_path):
+    pages = [("Empresa Alfa  Contrato de servico", _body(k), f"Pagina {k + 1} de 4") for k in range(4)]
+    header, footer = _detect(_doc(tmp_path / "d.pdf", pages))
+    assert 5 < header < 14          # cabeçalho em y≈40 de 842 (≈5%), mais a margem; o corpo começa em ~13%
+    assert 1 < footer <= 6          # rodapé em y≈820
+    a = _doc(tmp_path / "a.pdf", pages)
+    doc = fitz.open(str(a))
+    scope = CompareScope(header, footer)
+    filtered = scoped_index(DocumentIndex.build(doc), scope, page_geometry(doc))
+    texts = " ".join(t.text for t in filtered.pages[0])
+    assert "empresa" not in texts.lower() and "proprio" in texts.lower()   # o corpo ficou inteiro
+
+    # sem nada repetido, ou repetido longe das bordas (além de 40%), ou em só uma página: nada
+    assert _detect(_doc(tmp_path / "n.pdf", [("", _body(k), "") for k in range(3)])) == (0.0, 0.0)
+    doc = fitz.open()
+    for k in range(3):
+        page = doc.new_page()
+        page.insert_text((60, 400), "Titulo repetido no meio", fontsize=11)
+        page.insert_text((60, 120), ["alfa inicio", "beta comeco", "gama abertura"][k], fontsize=11)
+    doc.save(str(tmp_path / "m.pdf"))
+    assert _detect(tmp_path / "m.pdf") == (0.0, 0.0)
+    assert _detect(_doc(tmp_path / "u.pdf", [pages[0]])) == (0.0, 0.0)
+    assert merge_detected([(4, 0), (2, 3)]) == (4, 3) and merge_detected([]) == (0, 0)
+
+
+def test_detect_respects_the_limit(tmp_path):
+    doc = fitz.open()
+    for k in range(3):
+        page = doc.new_page()
+        for n in range(20):                                    # 20 linhas repetidas: passam de 40% da página
+            page.insert_text((60, 40 + 20 * n), f"Linha fixa {n}", fontsize=11)
+        page.insert_text((60, 700), f"corpo {k}", fontsize=11)
+    doc.save(str(tmp_path / "l.pdf"))
+    header, _ = _detect(tmp_path / "l.pdf")
+    assert header <= 40
+
+
+@pytest.mark.auto_bands
+def test_window_detects_bands_once_per_set(window, tmp_path, qtbot):
+    w = window
+    pages_a = [("Empresa Alfa revisao 1", _body(k), f"Pagina {k + 1} de 3") for k in range(3)]
+    pages_b = [("Empresa Beta revisao 7", _body(k), f"Folha {k + 1} / 3") for k in range(3)]
+    w.add_files([_doc(tmp_path / "a.pdf", pages_a), _doc(tmp_path / "b.pdf", pages_b)])
+    w.act_diff.trigger()
+    _idle(qtbot, w)
+    assert w.compare.header > 0 and w.compare.footer > 0 and w.nav.total_diffs == 0
+    w.set_band("header", 0.0)                                   # o usuário desfaz: a detecção não volta
+    w._on_index_progress(0, 0)
+    _idle(qtbot, w)
+    assert w.compare.header == 0 and w.nav.total_diffs > 0
+
+
+@pytest.mark.auto_bands
+def test_detection_can_be_turned_off(window, tmp_path, qtbot):
+    from dataclasses import replace
+
+    w = window
+    w.set_compare_settings(replace(w.compare, auto_bands=False))
+    pages = [("Empresa Alfa revisao 1", _body(k), "") for k in range(3)]
+    w.add_files([_doc(tmp_path / "a.pdf", pages), _doc(tmp_path / "b.pdf", pages)])
+    _idle(qtbot, w)
+    assert w.compare.header == 0
+    w.set_compare_settings(replace(w.compare, auto_bands=True))   # ligou: detecta na hora
+    assert w.compare.header > 0
+
+
+def _drag(qtbot, widget, start, end):
+    from PySide6.QtCore import Qt
+
+    qtbot.mousePress(widget, Qt.MouseButton.LeftButton, pos=start)
+    qtbot.mouseMove(widget, end)
+    qtbot.mouseRelease(widget, Qt.MouseButton.LeftButton, pos=end)
+
+
+@pytest.mark.parametrize("continuous", [False, True])
+def test_drag_band_lines_on_the_page(window, tmp_path, qtbot, continuous):
+    from dataclasses import replace
+
+    w = window
+    w.add_files(list(_pair(tmp_path)))
+    w.act_diff.trigger()
+    _idle(qtbot, w)
+    if continuous:
+        w.act_continuous.trigger()
+    pane = w.panes[0]
+    widget = pane.surface
+
+    def at(x, y):
+        p = pane._display_to_widget(0, x, y)
+        return p.toPoint()
+
+    assert pane.band_provider() == {"header": 0, "footer": 0}
+    _drag(qtbot, widget, at(300, 0), at(300, 842 * 0.10))      # da borda de cima até 10%
+    assert w.compare.header == pytest.approx(10, abs=1)
+    _idle(qtbot, w)
+    assert w.nav.total_diffs > 0                                # o rodapé ainda difere
+    _drag(qtbot, widget, at(300, 842 * 0.10), at(300, 842 * 0.70))   # para além de 40%: fica em 40
+    assert w.compare.header == 40
+    _drag(qtbot, widget, at(300, 842), at(300, 842 * 0.95))      # rodapé a partir da borda de baixo
+    assert w.compare.footer == pytest.approx(5, abs=1)
+
+    assert "left" not in pane.band_provider()                   # laterais: desligadas por padrão
+    w.set_compare_settings(replace(w.compare, sides=True))
+    _drag(qtbot, widget, at(0, 400), at(595 * 0.2, 400))
+    assert w.compare.left == pytest.approx(20, abs=1) and w.compare.scope.left == w.compare.left
+    assert w.scope_marks(0, 0)[3] == w.compare.left
+    widget.grab()
+    w.set_compare_settings(replace(w.compare, sides=False))
+    assert w.compare.scope.left == 0                            # desligadas: o valor fica guardado, sem efeito
+
+
+def test_band_lines_only_while_comparing(window, tmp_path, qtbot):
+    w = window
+    w.add_files(list(_pair(tmp_path)))
+    assert w.panes[0].band_provider() is None
+    w.act_visual_diff.trigger()
+    assert w.panes[0].band_provider() is not None
+
+
+def test_wheel_notches_setting(window, tmp_path, qtbot):
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QApplication
+
+    from app.ui.settings_dialog import SettingsDialog, SettingsValues
+
+    w = window
+    pages = [("", [f"pagina {k}"] * 30, "") for k in range(3)]
+    w.add_files([_doc(tmp_path / "a.pdf", pages), _doc(tmp_path / "b.pdf", pages)])
+    w.set_zoom(2.0)
+    dialog = SettingsDialog(SettingsValues("pt", "eng", w.prefs.diff_colors(), w.mark_style, w.compare,
+                                           True, w.wheel_notches()))
+    assert dialog.wheel_spin.value() == 1
+    dialog.wheel_spin.setValue(3)
+    assert not dialog.left_spin.isEnabled()
+    dialog.sides_check.setChecked(True)
+    assert dialog.left_spin.isEnabled()
+    w.apply_settings(dialog.values())
+    assert w.wheel_notches() == 3 and w.compare.sides
+
+    pane = w.panes[0]
+    bar = pane.scroll.verticalScrollBar()
+    bar.setValue(bar.maximum())
+    for _ in range(2):
+        QApplication.sendEvent(pane.scroll.viewport(), QWheelEvent(
+            QPointF(50, 50), QPointF(50, 50), QPoint(0, 0), QPoint(0, -120), Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False))
+    assert w.nav.page_for(0) == 0                               # 2 dentes ainda não bastam
+    QApplication.sendEvent(pane.scroll.viewport(), QWheelEvent(
+        QPointF(50, 50), QPointF(50, 50), QPoint(0, 0), QPoint(0, -120), Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False))
+    assert w.nav.page_for(0) == 1

@@ -109,6 +109,8 @@ class PdfPane(QFrame):
     region_picked = Signal(int, int, float, int, float)   # "Alinhar seleções": (painel, pág. início, y, pág. fim, y)
     relayout_requested = Signal(int)         # rolagem contínua: o painel mudou de tamanho
     page_flip = Signal(int, int)             # uma página por vez: rolou além da borda (painel, +1 / -1)
+    band_dragging = Signal(str, float)       # arrastando a linha de uma faixa ignorada: (faixa, %)
+    band_changed = Signal(str, float)        # soltou a linha: (faixa: header/footer/left/right, %)
 
     CACHE_SIZE = 4
     MARGIN = 12
@@ -147,8 +149,12 @@ class PdfPane(QFrame):
         self._cfocus = None
         self._max_size: Optional[Tuple[float, float]] = None
         self.visual_provider = None            # rolagem contínua: página -> áreas da diferença visual
-        self.scope_provider = None             # página -> (ignorada, % cabeçalho, % rodapé) fora da comparação
+        self.scope_provider = None             # página -> (ignorada, % cabeçalho, % rodapé, % esq., % dir.)
+        self.band_provider = None              # () -> {faixa: %} das faixas que se arrastam, ou None
+        self._band_drag: Optional[tuple] = None   # (faixa, página, largura, altura) sendo arrastada
+        self._band_line: Optional[QRubberBand] = None   # linha mostrada enquanto arrasta
         self.wheel_flip = True                 # uma página por vez: a roda do mouse passa de página nas bordas
+        self.wheel_notches = 1                 # dentes da roda além da borda para passar de página
         self.land_at_bottom = False            # a próxima página aberta começa pela parte de baixo
         self._edge_wheel = 0                   # rolagem acumulada contra a borda (1/8 de grau)
 
@@ -491,6 +497,129 @@ class PdfPane(QFrame):
         point = fitz.Point(x, y) * self.session.doc[page_no].derotation_matrix
         return point.x, point.y
 
+    def _display_point(self, pos: QPoint) -> Optional[tuple]:
+        """Ponto do mouse na página como é mostrada: (página, x, y, largura, altura, escala)."""
+        doc = self.session.doc
+        if doc is None:
+            return None
+        if self.continuous:
+            layout = self.canvas.layout_strip
+            page = self._page_under(pos)
+            if layout is None or page is None:
+                return None
+            pieces = [p for p in layout.pieces if p.page == page]
+            if not pieces:
+                return None
+            y_px = pos.y()
+            y = pieces[0].y0 + (y_px - pieces[0].top) / layout.scale
+            for piece in pieces:
+                if y_px >= piece.top:
+                    y = piece.y0 + (y_px - piece.top) / layout.scale
+            x = (pos.x() - self.canvas.page_left(page)) / layout.scale
+            scale = layout.scale
+        else:
+            page = self._shown_page
+            pix = self.image.pixmap()
+            if page is None or pix is None or pix.isNull():
+                return None
+            ox = (self.image.width() - pix.width() / self._dpr) / 2
+            oy = (self.image.height() - pix.height() / self._dpr) / 2
+            x, y, scale = (pos.x() - ox) / self._scale, (pos.y() - oy) / self._scale, self._scale
+        rect = doc[page].rect
+        return page, x, y, rect.width, rect.height, scale
+
+    def _display_to_widget(self, page: int, x: float, y: float) -> QPointF:
+        if self.continuous:
+            layout = self.canvas.layout_strip
+            return QPointF(self.canvas.page_left(page) + x * layout.scale, layout.to_strip(page, y))
+        pix = self.image.pixmap()
+        ox = (self.image.width() - pix.width() / self._dpr) / 2
+        oy = (self.image.height() - pix.height() / self._dpr) / 2
+        return QPointF(ox + x * self._scale, oy + y * self._scale)
+
+    BAND_GRIP = 5   # pixels de cada lado da linha de uma faixa
+
+    def _band_hit(self, pos: QPoint) -> Optional[str]:
+        """Linha de faixa ignorada (ou borda da página) sob o mouse."""
+        if (self.band_provider is None or self.tool != TOOL_NONE or self.region_mode or self.pick_mode
+                or self._gap_drag is not None):
+            return None
+        bands = self.band_provider()
+        info = self._display_point(pos) if bands else None
+        if not info:
+            return None
+        _, x, y, w, h, scale = info
+        tol = self.BAND_GRIP / max(scale, 1e-6)
+        if not (-tol <= x <= w + tol and -tol <= y <= h + tol):
+            return None
+        where = {"header": abs(y - h * bands.get("header", 0) / 100),
+                 "footer": abs(y - h * (1 - bands.get("footer", 0) / 100)),
+                 "left": abs(x - w * bands.get("left", 0) / 100),
+                 "right": abs(x - w * (1 - bands.get("right", 0) / 100))}
+        near = [(d, k) for k, d in where.items() if k in bands and d <= tol]
+        return min(near)[1] if near else None
+
+    def _band_percent(self, kind: str, pos: QPoint) -> Optional[float]:
+        info = self._display_point(pos)
+        if info is None or self._band_drag is None:
+            return None
+        _, x, y, w, h, _ = info
+        value = {"header": y / h, "footer": 1 - y / h, "left": x / w, "right": 1 - x / w}[kind] * 100
+        from app.services.compare_scope import MAX_ZONE
+
+        return round(min(max(value, 0.0), MAX_ZONE) * 2) / 2
+
+    def _show_band_line(self, kind: str, percent: float) -> None:
+        _, page, w, h = self._band_drag
+        if kind in ("header", "footer"):
+            y = h * (percent if kind == "header" else 100 - percent) / 100
+            a, b = self._display_to_widget(page, 0, y), self._display_to_widget(page, w, y)
+            rect = QRect(int(a.x()), int(a.y()) - 1, max(int(b.x() - a.x()), 1), 3)
+        else:
+            x = w * (percent if kind == "left" else 100 - percent) / 100
+            a, b = self._display_to_widget(page, x, 0), self._display_to_widget(page, x, h)
+            rect = QRect(int(a.x()) - 1, int(a.y()), 3, max(int(b.y() - a.y()), 1))
+        if self._band_line is None or self._band_line.parent() is not self.surface:
+            self._band_line = QRubberBand(QRubberBand.Shape.Line, self.surface)
+        self._band_line.setGeometry(rect)
+        self._band_line.show()
+
+    def _band_event(self, event: QEvent) -> bool:
+        """Arrastar a linha de uma faixa ignorada (cabeçalho, rodapé, laterais) na própria página."""
+        etype = event.type()
+        if etype not in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseMove, QEvent.Type.MouseButtonRelease):
+            return False
+        pos = event.position().toPoint()
+        if self._band_drag is not None:
+            kind = self._band_drag[0]
+            percent = self._band_percent(kind, pos)
+            if etype == QEvent.Type.MouseMove and percent is not None:
+                self._show_band_line(kind, percent)
+                self.band_dragging.emit(kind, percent)
+            elif etype == QEvent.Type.MouseButtonRelease:
+                self._band_drag = None
+                if self._band_line is not None:
+                    self._band_line.hide()
+                if percent is not None:
+                    self.band_changed.emit(kind, percent)
+            return True
+        kind = self._band_hit(pos)
+        if kind is None:
+            return False
+        if etype == QEvent.Type.MouseMove:
+            self.surface.setCursor(Qt.CursorShape.SizeVerCursor if kind in ("header", "footer")
+                                   else Qt.CursorShape.SizeHorCursor)
+            return True
+        if etype == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            page, _, _, w, h, _ = self._display_point(pos)
+            self._band_drag = (kind, page, w, h)
+            percent = self._band_percent(kind, pos)
+            if percent is not None:
+                self._show_band_line(kind, percent)
+                self.band_dragging.emit(kind, percent)
+            return True
+        return False
+
     def _page_under(self, pos: QPoint) -> Optional[int]:
         layout = self.canvas.layout_strip
         return layout.from_strip(pos.y())[0] if layout is not None and layout.page_top else None
@@ -729,7 +858,8 @@ class PdfPane(QFrame):
 
     def _paint_scope(self, image: QImage, page: fitz.Page, scope, scale: float, dpr: float) -> None:
         """Partes fora da comparação: cabeçalho e rodapé ignorados (faixa cinza) ou a página inteira."""
-        ignored, header, footer = scope
+        ignored, header, footer = scope[:3]
+        left, right = (scope[3], scope[4]) if len(scope) >= 5 else (0, 0)
         width, height = image.width(), image.height()
         painter = QPainter(image)
         shade = QColor(90, 98, 120, 34)
@@ -754,6 +884,16 @@ class PdfPane(QFrame):
             y = height * (1 - footer / 100)
             painter.fillRect(QRectF(0, y, width, height - y), shade)
             painter.drawLine(QPointF(0, y), QPointF(width, y))
+        top = height * header / 100
+        bottom = height * (1 - footer / 100)
+        if left:
+            x = width * left / 100
+            painter.fillRect(QRectF(0, top, x, bottom - top), shade)
+            painter.drawLine(QPointF(x, 0), QPointF(x, height))
+        if right:
+            x = width * (1 - right / 100)
+            painter.fillRect(QRectF(x, top, width - x, bottom - top), shade)
+            painter.drawLine(QPointF(x, 0), QPointF(x, height))
         painter.end()
 
     @classmethod
@@ -1224,6 +1364,8 @@ class PdfPane(QFrame):
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802
         if self.continuous and obj is self.canvas and self._canvas_event(event):
             return True
+        if obj is self.surface and self._band_event(event):
+            return True
         if obj is self.surface and self._image_event(event):
             return True
         if (
@@ -1256,7 +1398,7 @@ class PdfPane(QFrame):
         if (self._edge_wheel < 0) != (dy < 0):
             self._edge_wheel = 0
         self._edge_wheel += dy
-        if abs(self._edge_wheel) < self.EDGE_WHEEL:
+        if abs(self._edge_wheel) < self.EDGE_WHEEL * max(self.wheel_notches, 1):
             return True
         self._edge_wheel = 0
         self.page_flip.emit(self.index, +1 if dy < 0 else -1)
