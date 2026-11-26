@@ -1,5 +1,8 @@
 # Novidades / Changelog
 
+Cada versão tem um `### Resumo` (português) e um `### Summary` (inglês) curtos: eles viram o texto
+"O que mudou" / "What's new" da Release no GitHub (`tools/release_notes.py`). Os detalhes vêm depois.
+
 ## [Não lançado / Unreleased]
 
 ### Português
@@ -28,9 +31,6 @@
 - Align selections (Ctrl+Shift+A): drag over a passage in one PDF, then over the matching passage in
   another. The start and end of both passages are lined up, overriding automatic alignment. Aligned
   passages get a green bar in the margin; right-click on it to undo.
-
-Cada versão tem um `### Resumo` (português) e um `### Summary` (inglês) curtos: eles viram o texto
-"O que mudou" / "What's new" da Release no GitHub (`tools/release_notes.py`). Os detalhes vêm depois.
 
 ## [0.3.0] — 2026-11
 
