@@ -211,8 +211,9 @@ The installer goes to `dist\installer\`.
 GitHub builds everything (`.github/workflows/release.yml`): tests, executable, installer,
 portable package and source code. To release:
 
-1. Update `__version__` in `app/__init__.py`, write the changes in `CHANGELOG.md` (a `## [version]`
-   section, which becomes the Release text) and merge into `main`.
+1. Update `__version__` in `app/__init__.py` and write the changes in `CHANGELOG.md`: a `## [version]`
+   section with short `### Resumo` (Portuguese) and `### Summary` (English) lists, which become the
+   Release's "What's new", together with the download steps in `.github/release-template.md`. Merge into `main`.
 2. Create and push the tag with the same number:
    ```bash
    git tag v0.3.0

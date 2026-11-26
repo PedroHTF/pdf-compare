@@ -218,8 +218,9 @@ O instalador fica em `dist\installer\`.
 O GitHub gera tudo sozinho (`.github/workflows/release.yml`): testes, executável, instalador,
 pacote portátil e código-fonte. Para lançar:
 
-1. Atualize `__version__` em `app/__init__.py`, escreva as novidades em `CHANGELOG.md` (seção
-   `## [versão]`, que vira o texto da Release) e faça o merge na `main`.
+1. Atualize `__version__` em `app/__init__.py` e escreva as novidades em `CHANGELOG.md`: uma seção
+   `## [versão]` com `### Resumo` (português) e `### Summary` (inglês) curtos, que viram o "O que mudou"
+   da Release, junto com os passos de download de `.github/release-template.md`. Faça o merge na `main`.
 2. Crie e envie a tag com o mesmo número:
    ```bash
    git tag v0.3.0
