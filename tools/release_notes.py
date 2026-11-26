@@ -1,6 +1,6 @@
 """Monta o texto da Release no GitHub a partir do CHANGELOG.md.
 
-Uso:  python -m tools.release_notes 0.3.0 notes/RELEASE.md
+Uso:  python -m tools.release_notes 0.4.0 notes/RELEASE.md
 
 Pega a seção `## [versão]` do CHANGELOG.md e, dentro dela, os resumos
 `### Resumo` (português) e `### Summary` (inglês), e preenche o modelo
