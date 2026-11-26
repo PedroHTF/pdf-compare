@@ -159,7 +159,7 @@ def test_alignment_store(tmp_path):
     store.add_line(key, (1, 50.0, 2, 80.0))
     again = AlignmentStore(tmp_path / "al")
     assert again.manual_pages(key) == [(1, 1), (4, 3)]
-    assert again.manual_gaps(key) == [(3, 100.0, 24.0)] and again.manual_lines(key) == [(1, 50.0, 2, 80.0)]
+    assert again.manual_gaps(key) == [(3, 100.0, 24.0, False, False)] and again.manual_lines(key) == [(1, 50.0, 2, 80.0)]
     again.set_gap(key, 3, 100.4, 0)     # altura 0 remove o espaço
     assert again.manual_gaps(key) == []
     again.clear(key)

@@ -52,6 +52,8 @@ language (Portuguese if Windows is in Portuguese, English otherwise). To switch,
 | Align pages by content | **Align by content** (Ctrl+Shift+L): added or removed pages appear with an empty pane next to them. A pane’s ◀ ▶ choose which page sits next to the reference; **Realign** undoes it |
 | See all pages in sequence | **Continuous scrolling** (Ctrl+Shift+C) |
 | Adjust the alignment in continuous scrolling | Drag the handle below a space; right-click › **Insert space here**, **Remove this space** or **Align this passage with…** (then click the matching passage in another PDF) |
+| Stop automatic alignment from changing a space | Right-click › **Lock this space** or **Remove and lock this space**; **Navigate › Unlock all spaces** undoes it |
+| Force chosen passages to line up | **Align selections** (Ctrl+Shift+A): drag over a passage in one PDF, then over the matching one in another |
 | Compare large PDFs in parts | Comparison runs in batches of pages (default: 50). **Compare next batch ▶** (F8) on the status bar; Shift+F8 goes back |
 | Highlight, underline or strike out text | Pick the tool on the **markup toolbar** (Highlight: Ctrl+H) and drag over the text |
 | Draw a rectangle, ellipse, line, arrow or freehand | Pick the tool and drag on the page |
@@ -111,7 +113,11 @@ content alignment on, **alignment spaces** the size of the added or removed cont
 where it would be, so matching passages sit at the same height in every PDF. When pages break at
 different points, spaces are also inserted at the breaks. When the automatic alignment gets it wrong
 (e.g. scanned PDFs), drag a space's handle, insert or remove a space, or use **Align this passage
-with…**; a manually adjusted space lasts until the next matching passage.
+with…**. A space enlarged or inserted by hand lasts until the next matching passage; a removed (or
+shrunk) space is not recreated further down while the difference persists. A **locked** space
+(padlock) is not changed by automatic alignment and is kept by **Realign**. With **Align selections**
+(Ctrl+Shift+A), drag over a passage in one PDF, then over the matching passage in another: the start
+and end of both are lined up (green bar in the margin; right-click it to undo).
 
 **Batch comparison.** With large PDFs the comparison is split into batches of pages of the first
 PDF (the others follow each pane's alignment). The status bar shows "Batch 2 of 8 · pages 51–100",

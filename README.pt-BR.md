@@ -49,6 +49,8 @@ Na primeira execução o Windows SmartScreen pode avisar que o programa não é 
 | Alinhar páginas pelo conteúdo | **Alinhar por conteúdo** (Ctrl+Shift+L): páginas incluídas ou removidas aparecem com o painel vazio ao lado. ◀ ▶ de um painel escolhem qual página fica ao lado da referência; **Realinhar** desfaz |
 | Ver todas as páginas em sequência | **Rolagem contínua** (Ctrl+Shift+C) |
 | Ajustar o alinhamento na rolagem contínua | Arraste a alça embaixo de um espaço; botão direito › **Inserir espaço aqui**, **Remover este espaço** ou **Alinhar este trecho com…** (e clique no trecho correspondente em outro PDF) |
+| Impedir que o alinhamento automático mude um espaço | Botão direito › **Travar este espaço** ou **Remover e travar este espaço**; **Navegar › Destravar todos os espaços** desfaz |
+| Forçar o alinhamento de trechos escolhidos | **Alinhar seleções** (Ctrl+Shift+A): arraste sobre um trecho em um PDF e depois sobre o correspondente em outro |
 | Comparar PDFs grandes por partes | A comparação é feita em lotes de páginas (padrão: 50). **Comparar próximo lote ▶** (F8) na barra de status; Shift+F8 volta |
 | Destacar, sublinhar ou tachar um trecho | Escolha a ferramenta na **barra de marcação** (Destacar: Ctrl+H) e arraste sobre o texto |
 | Desenhar retângulo, elipse, linha, seta ou à mão livre | Escolha a ferramenta e arraste na página |
@@ -117,7 +119,12 @@ alinhamento por conteúdo ligado, entram **espaços de alinhamento** do tamanho 
 ou removido, no lugar onde ele estaria, para que os trechos iguais fiquem na mesma altura em todos os
 PDFs. Quando as páginas quebram em pontos diferentes, também entram espaços nas quebras. Quando o
 alinhamento automático erra (ex.: PDFs escaneados), arraste a alça de um espaço, insira ou remova um
-espaço, ou use **Alinhar este trecho com…**; um espaço ajustado à mão vale até o próximo trecho igual.
+espaço, ou use **Alinhar este trecho com…**. Um espaço aumentado ou inserido à mão vale até o próximo
+trecho igual; um espaço removido (ou diminuído) não é recriado mais abaixo enquanto a diferença
+continuar. Um espaço **travado** (cadeado) não muda com o alinhamento automático e continua depois de
+**Realinhar**. Com **Alinhar seleções** (Ctrl+Shift+A), arraste sobre um trecho em um PDF e depois
+sobre o trecho correspondente em outro: o início e o fim dos dois ficam na mesma altura (barra verde
+na margem; botão direito sobre ela desfaz).
 
 **Comparação em lotes.** Em PDFs grandes a comparação é dividida em lotes de páginas do 1º PDF
 (os outros acompanham o alinhamento de cada painel). A barra de status mostra "Lote 2 de 8 ·

@@ -106,6 +106,7 @@ class PdfPane(QFrame):
     strip_scrolled = Signal(int, float)      # rolagem contínua: (painel, posição em pixels)
     gap_resized = Signal(int, int, float, float)   # (painel, página, y do espaço, ajuste manual em pontos)
     point_picked = Signal(int, int, float)   # "Alinhar este trecho com…": (painel, página, y)
+    region_picked = Signal(int, int, float, int, float)   # "Alinhar seleções": (painel, pág. início, y, pág. fim, y)
     relayout_requested = Signal(int)         # rolagem contínua: o painel mudou de tamanho
 
     CACHE_SIZE = 4
@@ -135,6 +136,10 @@ class PdfPane(QFrame):
         self.continuous = False
         self.pick_mode = False                 # esperando o clique de "Alinhar este trecho com…"
         self.last_context_gap = None           # espaço sob o último clique com o botão direito
+        self.last_context_block = None         # trecho alinhado sob o último clique com o botão direito
+        self.region_mode = False               # "Alinhar seleções": arrastar marca um trecho
+        self.region_marks: list = []           # trechos destacados: (pág. início, y, pág. fim, y, tipo, referência)
+        self.region_drag: Optional[Tuple[float, float]] = None   # trecho sendo arrastado (pixels da faixa)
         self.gap_drag_line: Optional[float] = None
         self._gap_drag: Optional[dict] = None
         self._cdata: dict = {"hits": {}, "diffs": {}, "marks": {}, "hit": None, "diff": None}
@@ -497,7 +502,24 @@ class PdfPane(QFrame):
                 gap = g["gap"]
                 self.gap_resized.emit(self.index, gap.page, gap.y, gap.manual / max(layout.scale, 1e-6))
                 return True
+        if self.region_mode and self.region_drag is not None:
+            if etype == QEvent.Type.MouseMove:
+                self.region_drag = (self.region_drag[0], float(pos.y()))
+                self.canvas.update()
+                return True
+            if etype == QEvent.Type.MouseButtonRelease:
+                start, _ = self.region_drag
+                self.region_drag = None
+                self.canvas.update()
+                self._emit_region(start, float(pos.y()), pos.x())
+                return True
+        if etype == QEvent.Type.MouseMove and (self.region_mode or self.pick_mode):
+            return True            # o cursor (cruz / proibido) foi escolhido pela janela
         if etype == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            if self.region_mode and not self.pick_mode:
+                self.region_drag = (float(pos.y()), float(pos.y()))
+                self.canvas.update()
+                return True
             if self.pick_mode:
                 page = self._page_under(pos)
                 point = self._continuous_point(page, pos) if page is not None else None
@@ -505,6 +527,8 @@ class PdfPane(QFrame):
                     self.point_picked.emit(self.index, page, point[1])
                 return True
             handle = self.canvas.gap_handle_at(pos.y()) if self.tool == TOOL_NONE else None
+            if handle is not None and handle.gap.locked:
+                return True        # travado: não se arrasta
             if handle is not None:
                 gaps = layout.gaps()
                 self._gap_drag = {"gap": handle.gap, "manual": handle.gap.manual, "start": pos.y(), "gaps": gaps}
@@ -512,17 +536,44 @@ class PdfPane(QFrame):
         if etype == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.RightButton:
             gap = self.canvas.gap_at(pos.y())
             self.last_context_gap = gap.gap if gap is not None else None
+            self.last_context_block = self.canvas.block_at(pos.y())
         busy = self._gesture is not None or self._polygon or self._drag_start is not None
         if not busy and etype in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick, QEvent.Type.MouseMove):
             page = self._page_under(pos)
             if page is not None:
                 self._shown_page = page
-            if etype == QEvent.Type.MouseMove and self.tool == TOOL_NONE:
-                over = self.canvas.gap_handle_at(pos.y()) is not None
-                if over:
-                    self.canvas.setCursor(Qt.CursorShape.SizeVerCursor)
+            if etype == QEvent.Type.MouseMove and self.tool == TOOL_NONE and not self.region_mode:
+                handle = self.canvas.gap_handle_at(pos.y())
+                if handle is not None:
+                    self.canvas.setCursor(Qt.CursorShape.ForbiddenCursor if handle.gap.locked
+                                          else Qt.CursorShape.SizeVerCursor)
                     return True
         return False
+
+    def _emit_region(self, start: float, end: float, x: int) -> None:
+        """Fim do arrasto de "Alinhar seleções": o trecho entre as duas alturas."""
+        layout = self.canvas.layout_strip
+        if layout is None or not layout.page_top:
+            return
+        top, bottom = min(start, end), max(start, end)
+        if bottom - top < 3:   # só um clique: a linha sob o cursor
+            bottom = top + 1
+        points = []
+        for value in (top, bottom):
+            page = layout.from_strip(value)[0]
+            point = self._continuous_point(page, QPoint(x, int(round(value))))
+            if point is None:
+                return
+            points.append((page, point[1]))
+        (p0, y0), (p1, y1) = points
+        self.region_picked.emit(self.index, p0, y0, p1, y1)
+
+    def cancel_region(self) -> bool:
+        if self.region_drag is None:
+            return False
+        self.region_drag = None
+        self.canvas.update()
+        return True
 
     # --- renderização ---------------------------------------------------------
     def _render_now(self) -> None:
