@@ -16,6 +16,21 @@
   o alinhamento automático. Os trechos alinhados ganham uma barra verde na margem; botão direito sobre
   eles desfaz.
 
+**O que entra na comparação**
+- Ignorar cabeçalho e/ou rodapé (Configurações › Comparação): faixas no topo e na base de cada página,
+  em % da altura, ficam fora da comparação de texto, do relatório, da diferença visual e do alinhamento
+  por conteúdo. Aparecem sombreadas nas páginas.
+- Ignorar páginas (botão direito na página › Ignorar esta página na comparação, ou Ferramentas › Páginas
+  ignoradas na comparação…, ex.: "1-3, 7"): para capa, índice etc. Lembradas ao reabrir o mesmo PDF.
+- A comparação segue o alinhamento feito à mão (opção, ligada por padrão): cada trecho alinhado por
+  seleção (ou página fixada ao lado da referência) é comparado com o trecho correspondente.
+- Comparar só a página atual: menu ▾ do botão "Comparar texto" (ou Ferramentas › Abrangência da
+  comparação). A comparação acompanha quando você muda de página.
+
+**Visualização**
+- Uma página por vez: rolar com a roda do mouse além do fim da página abre a seguinte (e além do início,
+  a anterior, mostrando o fim dela). Exibir › Rolar para a próxima página liga/desliga.
+
 ### English
 
 **Content alignment (continuous scrolling)**
@@ -28,6 +43,21 @@
 - Align selections (Ctrl+Shift+A): drag over a passage in one PDF, then over the matching passage in
   another. The start and end of both passages are lined up, overriding automatic alignment. Aligned
   passages get a green bar in the margin; right-click on it to undo.
+
+**What is compared**
+- Ignore header and/or footer (Settings › Comparison): bands at the top and bottom of every page, in % of
+  its height, are left out of the text comparison, the report, the visual difference and content
+  alignment. They are shaded on the pages.
+- Ignore pages (right-click a page › Ignore this page in the comparison, or Tools › Ignored pages…,
+  e.g. "1-3, 7"): for covers, tables of contents etc. Remembered when the same PDF is opened again.
+- The comparison follows manual alignment (option, on by default): each passage aligned by selection
+  (or page pinned next to the reference) is compared with its matching passage.
+- Compare only the current page: ▾ menu of the "Compare text" button (or Tools › Comparison scope).
+  The comparison follows as you change pages.
+
+**Viewing**
+- One page at a time: scrolling the mouse wheel past the end of a page opens the next one (and past
+  the top, the previous one, showing its end). View › Scroll to the next page turns it on/off.
 
 ## [0.3.0] — 2026-11
 

@@ -864,4 +864,78 @@ EN = {
         'Only asks GitHub for the latest version number. Nothing is downloaded or installed unless you ask.',
     'Atualizações':
         'Updates',
+    ' % da página':
+        ' % of the page',
+    'Abrangência da &comparação':
+        'Comparison &scope',
+    'Com o alinhamento por conteúdo ligado, cada trecho é comparado com o trecho que você alinhou a ele':
+        'With content alignment on, each passage is compared with the passage you aligned it to',
+    'Comparando o documento inteiro.':
+        'Comparing the whole document.',
+    'Comparando só a página atual: a comparação acompanha a navegação.':
+        'Comparing only the current page: the comparison follows as you navigate.',
+    'Comparar':
+        'Compare',
+    'Comparar apenas as páginas à vista; a comparação acompanha quando você muda de página':
+        'Compare only the pages in view; the comparison follows when you change pages',
+    'Comparar o documento inteiro':
+        'Compare the whole document',
+    'Comparar só a página atual':
+        'Compare only the current page',
+    'Comparar todas as páginas (em lotes, conforme as Configurações)':
+        'Compare all pages (in batches, as set in Settings)',
+    'Escolher páginas de cada PDF que ficam fora da comparação (ex.: capa, índice)':
+        'Choose pages of each PDF to leave out of the comparison (e.g. cover, table of contents)',
+    'Ignora o texto na base de cada página (rodapé), na comparação, no relatório e no alinhamento por conteúdo':
+        'Ignores the text at the bottom of each page (footer) in the comparison, the report and content alignment',
+    'Ignora o texto no topo de cada página (cabeçalho), na comparação, no relatório e no alinhamento por conteúdo':
+        'Ignores the text at the top of each page (header) in the comparison, the report and content alignment',
+    'Ignorar cabeçalho':
+        'Ignore header',
+    'Ignorar esta página na comparação':
+        'Ignore this page in the comparison',
+    'Ignorar rodapé':
+        'Ignore footer',
+    'O que comparar':
+        'What to compare',
+    'Página ignorada na comparação':
+        'Page ignored in the comparison',
+    'Página {page} de {name} ignorada na comparação.':
+        'Page {page} of {name} ignored in the comparison.',
+    'Página {page} de {name} voltou a ser comparada.':
+        'Page {page} of {name} is compared again.',
+    'Páginas &ignoradas na comparação…':
+        '&Ignored pages…',
+    'Páginas de cada PDF que ficam fora da comparação de texto, do relatório e do alinhamento por conteúdo (ex.: capa, índice). Exemplo: 1-3, 7':
+        'Pages of each PDF left out of the text comparison, the report and content alignment (e.g. cover, table of contents). Example: 1-3, 7',
+    'Páginas ignoradas atualizadas.':
+        'Ignored pages updated.',
+    'Páginas ignoradas na comparação':
+        'Pages ignored in the comparison',
+    'Páginas inteiras (ex.: índice) podem ser ignoradas pelo botão direito na página ou em Ferramentas › Páginas ignoradas na comparação.':
+        'Whole pages (e.g. table of contents) can be ignored by right-clicking the page or in Tools › Ignored pages.',
+    'Páginas inválidas em {name}: “{part}”':
+        'Invalid pages in {name}: “{part}”',
+    'Rolar para a &próxima página':
+        'Scroll to the &next page',
+    'Seguir o alinhamento feito à mão (trechos e páginas alinhados)':
+        'Follow manual alignment (aligned passages and pages)',
+    'Uma página por vez: rolar além do fim da página abre a seguinte (e além do início, a anterior)':
+        'One page at a time: scrolling past the end of a page opens the next one (and past the top, the previous one)',
+    'Voltar a comparar esta página':
+        'Compare this page again',
+    'sem cabeçalho':
+        'without header',
+    'sem cabeçalho e rodapé':
+        'without header and footer',
+    'sem rodapé':
+        'without footer',
+    'só a página atual':
+        'current page only',
+    '{name} ({n} págs.)':
+        '{name} ({n} pages)',
+    '{n} página ignorada':
+        '{n} page ignored',
+    '{n} páginas ignoradas':
+        '{n} pages ignored',
 }

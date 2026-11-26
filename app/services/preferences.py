@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from typing import Dict, Optional, Tuple
 
 from app.services.annotations import HIGHLIGHT_COLOR, SHAPE_COLOR, Color
+from app.services.compare_scope import MAX_ZONE, CompareScope
 from app.services.diff_batches import DEFAULT_BATCH_SIZE, DEFAULT_RETENTION_DAYS
 from app.services.text_diff import ADDED, CHANGED, REMOVED
 from app.services.visual_diff import DEFAULT_SENSITIVITY, VISUAL
@@ -68,6 +69,14 @@ class CompareSettings:
     cache_days: int = DEFAULT_RETENTION_DAYS    # 0 = nunca apagar
     realign_mode: str = REALIGN_ON_CLICK
     visual_sensitivity: int = DEFAULT_SENSITIVITY   # diferença visual: 1 (pouco) a 100 (muito sensível)
+    header: int = 0                         # % da altura ignorada no topo de cada página (0 = não ignorar)
+    footer: int = 0                         # % ignorada na base de cada página
+    follow_alignment: bool = True           # a comparação segue os trechos/páginas alinhados à mão
+    page_only: bool = False                 # comparar só a página atual (em vez do documento inteiro)
+
+    @property
+    def scope(self) -> CompareScope:
+        return CompareScope(self.header, self.footer)
 
 
 DEFAULT_COMPARE = CompareSettings()
@@ -98,9 +107,7 @@ class Preferences:
     def compare_settings(self) -> CompareSettings:
         d = DEFAULT_COMPARE
         mode = str(self.settings.value("compare/next_mode", d.next_mode))
-        pause = self.settings.value("compare/pause_while_busy", d.pause_while_busy)
-        if isinstance(pause, str):
-            pause = pause.lower() in ("true", "1", "yes")
+        pause = self._bool("compare/pause_while_busy", d.pause_while_busy)
         realign = str(self.settings.value("compare/realign_mode", d.realign_mode))
         return CompareSettings(
             visual_sensitivity=self._int("compare/visual_sensitivity", d.visual_sensitivity, 1, 100),
@@ -110,7 +117,17 @@ class Preferences:
             lookahead=self._int("compare/lookahead", d.lookahead, 0, 1000),
             pause_while_busy=bool(pause),
             cache_days=self._int("compare/cache_days", d.cache_days, 0, 3650),
+            header=self._int("compare/header", d.header, 0, MAX_ZONE),
+            footer=self._int("compare/footer", d.footer, 0, MAX_ZONE),
+            follow_alignment=self._bool("compare/follow_alignment", d.follow_alignment),
+            page_only=self._bool("compare/page_only", d.page_only),
         )
+
+    def _bool(self, key: str, default: bool) -> bool:
+        value = self.settings.value(key, default)
+        if isinstance(value, str):
+            return value.lower() in ("true", "1", "yes")
+        return bool(value)
 
     def set_compare_settings(self, c: CompareSettings) -> None:
         self.settings.setValue("compare/batch_size", c.batch_size)
@@ -120,6 +137,10 @@ class Preferences:
         self.settings.setValue("compare/cache_days", c.cache_days)
         self.settings.setValue("compare/realign_mode", c.realign_mode)
         self.settings.setValue("compare/visual_sensitivity", c.visual_sensitivity)
+        self.settings.setValue("compare/header", c.header)
+        self.settings.setValue("compare/footer", c.footer)
+        self.settings.setValue("compare/follow_alignment", c.follow_alignment)
+        self.settings.setValue("compare/page_only", c.page_only)
 
     # --- estilo das marcações -------------------------------------------------------
     def _float(self, key: str, default: float, low: float, high: float) -> float:

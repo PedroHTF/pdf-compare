@@ -54,6 +54,10 @@ language (Portuguese if Windows is in Portuguese, English otherwise). To switch,
 | Adjust the alignment in continuous scrolling | Drag the handle below a space; right-click › **Insert space here**, **Remove this space** or **Align this passage with…** (then click the matching passage in another PDF) |
 | Stop automatic alignment from changing a space | Right-click › **Lock this space** or **Remove and lock this space**; **Navigate › Unlock all spaces** undoes it |
 | Force chosen passages to line up | **Align selections** (Ctrl+Shift+A): drag over a passage in one PDF, then over the matching one in another |
+| Leave headers/footers out of the comparison | **Settings › Comparison › Ignore header / footer** (% of the page height) |
+| Leave pages out of the comparison (cover, contents) | Right-click the page › **Ignore this page in the comparison**, or **Tools › Ignored pages…** |
+| Compare only the page in view | ▾ of the **Compare text** button › **Compare only the current page** |
+| Turn pages by scrolling (one page at a time) | Scroll past the end of the page; **View › Scroll to the next page** turns it on/off |
 | Compare large PDFs in parts | Comparison runs in batches of pages (default: 50). **Compare next batch ▶** (F8) on the status bar; Shift+F8 goes back |
 | Highlight, underline or strike out text | Pick the tool on the **markup toolbar** (Highlight: Ctrl+H) and drag over the text |
 | Draw a rectangle, ellipse, line, arrow or freehand | Pick the tool and drag on the page |

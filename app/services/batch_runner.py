@@ -13,6 +13,7 @@ os resultados chegam aos poucos.
 
 from __future__ import annotations
 
+import hashlib
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
@@ -21,7 +22,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from app.services.diff_batches import Batch, DiffCache, Pair, pair_key, plan_batches
-from app.services.text_diff import DiffMark, diff_pair, merge_results
+from app.services.text_diff import DiffMark, SyncPoint, diff_pair, merge_results
 from app.services.text_index import DocumentIndex
 
 
@@ -46,6 +47,7 @@ class BatchRunner(QObject):
         self._indexes: List[DocumentIndex] = []
         self._fingerprints: List[str] = []
         self._options = ""
+        self._sync: Dict[Tuple[int, int], List[SyncPoint]] = {}   # pontos alinhados à mão, por par
         self.pairs: List[Tuple[int, int]] = []           # (base, comparado) de cada comparação
         self._results: Dict[int, Dict[int, Pair]] = {}   # lote -> {par: resultado}
         self._queue: List[_Job] = []
@@ -64,16 +66,19 @@ class BatchRunner(QObject):
     # --- configuração ----------------------------------------------------------
     def configure(self, indexes: Sequence[DocumentIndex], fingerprints: Sequence[str], offsets: Sequence[int],
                   batch_size: int, options: str = "", pairs: Optional[Sequence[Tuple[int, int]]] = None,
-                  primary: int = 0, batches: Optional[Sequence[Batch]] = None) -> None:
+                  primary: int = 0, batches: Optional[Sequence[Batch]] = None,
+                  sync: Optional[Dict[Tuple[int, int], Sequence[SyncPoint]]] = None) -> None:
         """Novo plano de lotes. Descarta resultados e pedidos anteriores.
 
         `pairs`: comparações (base, comparado); padrão: o PDF 0 com cada um dos outros.
         `batches`: plano pronto (ex.: do alinhamento por conteúdo); senão, usa `offsets`.
+        `sync`: pontos alinhados pelo usuário em cada par (a comparação segue esse alinhamento).
         """
         self.reset()
         self._indexes = list(indexes)
         self._fingerprints = list(fingerprints)
         self._options = options
+        self._sync = {pair: sorted(points) for pair, points in (sync or {}).items() if points}
         self.pairs = list(pairs) if pairs is not None else [(0, i) for i in range(1, len(indexes))]
         counts = [i.page_count for i in self._indexes]
         if len(counts) < 2:
@@ -149,7 +154,8 @@ class BatchRunner(QObject):
         for p, (a, other) in enumerate(self.pairs):
             if p in self._results.get(batch, {}):
                 continue
-            key = pair_key(self._fingerprints[a], self._fingerprints[other], b.ranges[a], b.ranges[other], self._options)
+            key = pair_key(self._fingerprints[a], self._fingerprints[other], b.ranges[a], b.ranges[other],
+                           self._options + self._sync_key(a, other))
             jobs.append(_Job(batch, p, priority, key))
         self._queue = jobs + self._queue if priority else self._queue + jobs
         self._requested += len(jobs)
@@ -158,6 +164,12 @@ class BatchRunner(QObject):
             self._timer.start()
         QTimer.singleShot(0, self._tick)
         return True
+
+    def _sync_key(self, a: int, b: int) -> str:
+        points = self._sync.get((a, b))
+        if not points:
+            return ""
+        return ":sync=" + hashlib.sha1(repr(points).encode()).hexdigest()[:16]
 
     def cancel_background(self) -> None:
         """Cancela os lotes adiantados (os pedidos pelo usuário continuam)."""
@@ -220,7 +232,8 @@ class BatchRunner(QObject):
         a, other = self.pairs[job.pair]
         self._running = job
         self._future = self._executor.submit(diff_pair, self._indexes[a], self._indexes[other],
-                                             ref_pages=b.ranges[a], other_pages=b.ranges[other])
+                                             ref_pages=b.ranges[a], other_pages=b.ranges[other],
+                                             sync=self._sync.get((a, other)))
         self._future.generation = self._generation   # type: ignore[attr-defined]
 
     def _collect(self) -> None:
