@@ -25,6 +25,8 @@ from PySide6.QtWidgets import (
 from app.i18n import LANGUAGES, tr
 from app.services.annotations import Color
 from app.services.compare_scope import MAX_ZONE
+
+MAX_WHEEL_NOTCHES = 10
 from app.services.preferences import (
     DEFAULT_COMPARE,
     DEFAULT_DIFF_COLORS,
@@ -50,6 +52,7 @@ class SettingsValues:
     mark_style: MarkStyle
     compare: CompareSettings = field(default_factory=lambda: DEFAULT_COMPARE)
     check_updates: bool = True
+    wheel_notches: int = 1          # uma página por vez: dentes da roda além da borda para passar de página
 
 
 LOOKAHEAD_CHOICES = (1, 2, 3, 5, 10, LOOKAHEAD_ALL)
@@ -67,6 +70,7 @@ class SettingsDialog(QDialog):
         tabs = QTabWidget()
         tabs.addTab(self._general_tab(values, ocr_hint), tr("Geral"))
         tabs.addTab(self._compare_tab(values), tr("Comparação"))
+        tabs.addTab(self._scope_tab(values), tr("O que comparar"))
         tabs.addTab(self._marks_tab(values.mark_style), tr("Marcações"))
         self.tabs = tabs
 
@@ -102,29 +106,64 @@ class SettingsDialog(QDialog):
         self.updates_check.setToolTip(tr("Só consulta no GitHub o número da última versão. Nada é baixado "
                                          "ou instalado sem você pedir."))
         form.addRow(tr("Atualizações"), self.updates_check)
+        self.wheel_spin = QSpinBox()
+        self.wheel_spin.setRange(1, MAX_WHEEL_NOTCHES)
+        self.wheel_spin.setValue(values.wheel_notches)
+        self.wheel_spin.setSuffix(tr(" dente(s) da roda"))
+        self.wheel_spin.setToolTip(tr("Uma página por vez: depois de chegar ao fim (ou ao início) da página, "
+                                      "quantos dentes a mais da roda do mouse passam para a página seguinte "
+                                      "(ou anterior). Exibir › Rolar para a próxima página liga/desliga."))
+        form.addRow(tr("Passar de página após"), self.wheel_spin)
         return page
 
-    def _compare_tab(self, values: SettingsValues) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
+    def _scope_tab(self, values: SettingsValues) -> QWidget:
         c = values.compare
         self._page_only = c.page_only
-
-        scope = QGroupBox(tr("O que comparar"))
-        form = QFormLayout(scope)
-        self.header_spin = QSpinBox()
-        self.footer_spin = QSpinBox()
-        for spin, value in ((self.header_spin, c.header), (self.footer_spin, c.footer)):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        bands = QGroupBox(tr("Faixas ignoradas em todas as páginas"))
+        form = QFormLayout(bands)
+        self.header_spin, self.footer_spin = QDoubleSpinBox(), QDoubleSpinBox()
+        self.left_spin, self.right_spin = QDoubleSpinBox(), QDoubleSpinBox()
+        for spin, value in ((self.header_spin, c.header), (self.footer_spin, c.footer),
+                            (self.left_spin, c.left), (self.right_spin, c.right)):
             spin.setRange(0, MAX_ZONE)
-            spin.setSpecialValueText(tr("Comparar"))
-            spin.setSuffix(tr(" % da página"))
+            spin.setDecimals(1)
+            spin.setSingleStep(0.5)
+            spin.setSpecialValueText(tr("Não ignorar"))
             spin.setValue(value)
+        self.header_spin.setSuffix(tr(" % da altura"))
+        self.footer_spin.setSuffix(tr(" % da altura"))
+        self.left_spin.setSuffix(tr(" % da largura"))
+        self.right_spin.setSuffix(tr(" % da largura"))
         self.header_spin.setToolTip(tr("Ignora o texto no topo de cada página (cabeçalho), na comparação, "
                                        "no relatório e no alinhamento por conteúdo"))
         self.footer_spin.setToolTip(tr("Ignora o texto na base de cada página (rodapé), na comparação, "
                                        "no relatório e no alinhamento por conteúdo"))
         form.addRow(tr("Ignorar cabeçalho"), self.header_spin)
         form.addRow(tr("Ignorar rodapé"), self.footer_spin)
+        self.auto_bands_check = QCheckBox(tr("Detectar ao abrir os PDFs (até {n}% do topo e da base)", n=MAX_ZONE))
+        self.auto_bands_check.setChecked(c.auto_bands)
+        self.auto_bands_check.setToolTip(tr("Procura texto que se repete no topo e na base das páginas e ajusta "
+                                            "as faixas; depois você pode arrastar as linhas na página"))
+        form.addRow("", self.auto_bands_check)
+        self.sides_check = QCheckBox(tr("Ignorar também faixas nas laterais"))
+        self.sides_check.setChecked(c.sides)
+        form.addRow("", self.sides_check)
+        form.addRow(tr("Lateral esquerda"), self.left_spin)
+        form.addRow(tr("Lateral direita"), self.right_spin)
+        self.sides_check.toggled.connect(self.left_spin.setEnabled)
+        self.sides_check.toggled.connect(self.right_spin.setEnabled)
+        self.left_spin.setEnabled(c.sides)
+        self.right_spin.setEnabled(c.sides)
+        drag = QLabel(tr("Com a comparação ligada, as faixas aparecem sombreadas e as linhas podem ser arrastadas "
+                         "na própria página (a partir da borda, para criar uma faixa)."))
+        drag.setObjectName("muted")
+        drag.setWordWrap(True)
+        form.addRow(drag)
+        layout.addWidget(bands)
+        other = QGroupBox(tr("Alinhamento e páginas"))
+        form = QFormLayout(other)
         self.follow_check = QCheckBox(tr("Seguir o alinhamento feito à mão (trechos e páginas alinhados)"))
         self.follow_check.setChecked(c.follow_alignment)
         self.follow_check.setToolTip(tr("Com o alinhamento por conteúdo ligado, cada trecho é comparado com o "
@@ -135,7 +174,14 @@ class SettingsDialog(QDialog):
         note.setObjectName("muted")
         note.setWordWrap(True)
         form.addRow(note)
-        layout.addWidget(scope)
+        layout.addWidget(other)
+        layout.addStretch(1)
+        return page
+
+    def _compare_tab(self, values: SettingsValues) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        c = values.compare
 
         batches = QGroupBox(tr("Comparação em lotes"))
         form = QFormLayout(batches)
@@ -293,12 +339,15 @@ class SettingsDialog(QDialog):
                 font_size=float(self.mark_font.value()),
             ),
             check_updates=self.updates_check.isChecked(),
+            wheel_notches=self.wheel_spin.value(),
             compare=CompareSettings(
                 batch_size=self.batch_spin.value(), next_mode=self.next_combo.currentData(),
                 lookahead=self.lookahead_combo.currentData(), pause_while_busy=self.pause_check.isChecked(),
                 cache_days=self.cache_days_spin.value(), realign_mode=self.realign_combo.currentData(),
                 visual_sensitivity=self.visual_spin.value(),
                 header=self.header_spin.value(), footer=self.footer_spin.value(),
+                auto_bands=self.auto_bands_check.isChecked(), sides=self.sides_check.isChecked(),
+                left=self.left_spin.value(), right=self.right_spin.value(),
                 follow_alignment=self.follow_check.isChecked(), page_only=self._page_only,
             ),
         )

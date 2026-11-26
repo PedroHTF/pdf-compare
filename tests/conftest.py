@@ -49,13 +49,16 @@ def make_pdf(tmp_path: Path):
 
 
 @pytest.fixture
-def window(qtbot, tmp_path):
+def window(qtbot, tmp_path, request, monkeypatch):
     """Janela principal isolada: preferências em arquivo temporário e avisos capturados."""
     from PySide6.QtCore import QSettings
 
     from app.ui.main_window import MainWindow
 
     settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    if request.node.get_closest_marker("auto_bands") is None:
+        # os PDFs de teste repetem linhas no topo ("Página N"); a detecção de cabeçalho é testada à parte
+        monkeypatch.setattr(MainWindow, "_auto_detect_bands", lambda self: False)
     w = MainWindow(settings=settings, data_dir=tmp_path / "dados")
     w.notifications = []
     w._notify = lambda kind, title, text: w.notifications.append((kind, title, text))
@@ -73,3 +76,7 @@ def _portuguese_ui():
     i18n.set_language("pt")
     yield
     i18n.set_language("pt")
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "auto_bands: liga a detecção automática de cabeçalho/rodapé na janela")

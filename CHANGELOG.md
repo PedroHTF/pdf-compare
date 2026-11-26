@@ -30,9 +30,17 @@ Cada versão tem um `### Resumo` (português) e um `### Summary` (inglês) curto
 - Comparar só a página atual: menu ▾ do botão "Comparar texto" (ou Ferramentas › Abrangência da
   comparação). A comparação acompanha quando você muda de página.
 
+- Faixas na própria página: com a comparação ligada, as linhas do cabeçalho e do rodapé podem ser
+  arrastadas na página (a partir da borda, para criar uma faixa).
+- Cabeçalho e rodapé detectados ao abrir os PDFs: texto que se repete no topo e na base das páginas
+  (números trocados, ex.: "Página 3 de 10"), até 40% do topo e da base. Pode ser desligado em
+  Configurações › O que comparar.
+- Faixas nas laterais (esquerda e direita), desligadas por padrão.
+
 **Visualização**
 - Uma página por vez: rolar com a roda do mouse além do fim da página abre a seguinte (e além do início,
-  a anterior, mostrando o fim dela). Exibir › Rolar para a próxima página liga/desliga.
+  a anterior, mostrando o fim dela). Exibir › Rolar para a próxima página liga/desliga; em Configurações ›
+  Geral, escolha quantos dentes da roda (1 a 10) passam de página.
 
 ### English
 
@@ -58,9 +66,17 @@ Cada versão tem um `### Resumo` (português) e um `### Summary` (inglês) curto
 - Compare only the current page: ▾ menu of the "Compare text" button (or Tools › Comparison scope).
   The comparison follows as you change pages.
 
+- Bands on the page itself: with the comparison on, the header and footer lines can be dragged on the
+  page (from the edge, to create a band).
+- Header and footer detected when opening PDFs: text repeated at the top and bottom of the pages
+  (numbers ignored, e.g. "Page 3 of 10"), up to 40% from the top and bottom. Can be turned off in
+  Settings › What to compare.
+- Side bands (left and right), off by default.
+
 **Viewing**
 - One page at a time: scrolling the mouse wheel past the end of a page opens the next one (and past
-  the top, the previous one, showing its end). View › Scroll to the next page turns it on/off.
+  the top, the previous one, showing its end). View › Scroll to the next page turns it on/off; in
+  Settings › General, choose how many wheel notches (1 to 10) turn the page.
 
 ## [0.3.0] — 2026-11
 
