@@ -3,6 +3,35 @@
 Cada versão tem um `### Resumo` (português) e um `### Summary` (inglês) curtos: eles viram o texto
 "O que mudou" / "What's new" da Release no GitHub (`tools/release_notes.py`). Os detalhes vêm depois.
 
+## [Não lançado / Unreleased]
+
+### Português
+
+**Alinhamento por conteúdo (rolagem contínua)**
+- Correção: remover um espaço de alinhamento agora o remove de fato. Antes, o alinhamento automático
+  recriava o espaço logo abaixo (na âncora seguinte) e podia sobrar uma faixa laranja. Agora a diferença
+  é aceita até os PDFs voltarem a coincidir sozinhos. Diminuir um espaço pela alça segue a mesma regra.
+- Travar espaços (botão direito › Travar este espaço / Remover e travar este espaço): um espaço travado
+  não é alterado nem recriado pelo alinhamento automático, não se arrasta por engano e continua depois
+  de "Realinhar". Aparece com um cadeado; Navegar › Destravar todos os espaços desfaz.
+- Alinhar seleções (Ctrl+Shift+A): arraste sobre um trecho em um PDF e depois sobre o trecho
+  correspondente em outro. O início e o fim dos dois trechos ficam na mesma altura, com prioridade sobre
+  o alinhamento automático. Os trechos alinhados ganham uma barra verde na margem; botão direito sobre
+  eles desfaz.
+
+### English
+
+**Content alignment (continuous scrolling)**
+- Fix: removing an alignment space now really removes it. Previously, automatic alignment recreated it
+  just below (at the next anchor) and an orange strip could be left behind. The difference is now
+  accepted until the PDFs line up again on their own. Shrinking a space with its handle follows the same rule.
+- Lock spaces (right-click › Lock this space / Remove and lock this space): a locked space is not changed
+  or recreated by automatic alignment, can't be dragged by accident and is kept by "Realign". It shows a
+  padlock; Navigate › Unlock all spaces undoes it.
+- Align selections (Ctrl+Shift+A): drag over a passage in one PDF, then over the matching passage in
+  another. The start and end of both passages are lined up, overriding automatic alignment. Aligned
+  passages get a green bar in the margin; right-click on it to undo.
+
 ## [0.3.0] — 2026-11
 
 ### Resumo

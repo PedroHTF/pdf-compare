@@ -696,8 +696,54 @@ EN = {
         'Now click the matching passage in another PDF (Esc cancels).',
     'Trechos alinhados. Realinhar desfaz os ajustes manuais.':
         'Passages aligned. Realign undoes manual adjustments.',
-    'Role qualquer PDF: os outros acompanham  ·  botão direito: inserir espaço ou alinhar um trecho  ·  arraste a alça de um espaço para ajustar':
-        'Scroll any PDF: the others follow  ·  right-click: insert space or align a passage  ·  drag a space handle to adjust',
+    'Role qualquer PDF: os outros acompanham  ·  botão direito: inserir, remover ou travar espaço  ·  Ctrl+Shift+A: alinhar seleções  ·  arraste a alça de um espaço para ajustar':
+        'Scroll any PDF: the others follow  ·  right-click: insert, remove or lock a space  ·  Ctrl+Shift+A: align selections  ·  drag a space handle to adjust',
+    '(travado)':
+        '(locked)',
+    'Ajustes manuais do alinhamento desfeitos (os espaços travados foram mantidos).':
+        'Manual alignment adjustments undone (locked spaces were kept).',
+    'Alinhamento do trecho desfeito.':
+        'Passage alignment undone.',
+    'Alinhar &seleções':
+        'Align &selections',
+    'Alinhar seleções':
+        'Align selections',
+    'Alinhar seleções desligado.':
+        'Align selections turned off.',
+    'Alinhar seleções: arraste sobre um trecho em cada PDF':
+        'Align selections: drag over a passage in each PDF',
+    'Alinhar seleções: arraste sobre um trecho em um PDF e depois sobre o trecho correspondente em outro. Esc para sair.':
+        'Align selections: drag over a passage in one PDF, then over the matching passage in another. Esc to exit.',
+    'Arraste sobre um trecho em um PDF e depois sobre o trecho correspondente em outro: os dois ficam alinhados na rolagem contínua':
+        'Drag over a passage in one PDF, then over the matching passage in another: both are lined up in continuous scrolling',
+    'Desfazer o alinhamento deste trecho':
+        'Undo the alignment of this passage',
+    'Destravar este espaço':
+        'Unlock this space',
+    'Destravar todos os espaços':
+        'Unlock all spaces',
+    'Espaço destravado.':
+        'Space unlocked.',
+    'Espaço removido e travado: o alinhamento automático não o recria.':
+        'Space removed and locked: automatic alignment will not recreate it.',
+    'Espaço travado: o alinhamento automático não muda nem recria este espaço, e Realinhar o mantém.':
+        'Space locked: automatic alignment will not change or recreate it, and Realign keeps it.',
+    'O alinhamento automático não muda nem recria este espaço':
+        'Automatic alignment will not change or recreate this space',
+    'Os espaços travados voltam a poder ser ajustados e “Realinhar” passa a desfazê-los':
+        'Locked spaces can be adjusted again and “Realign” will undo them',
+    'Remover e travar este espaço':
+        'Remove and lock this space',
+    'Seleção cancelada. Arraste sobre um trecho para começar de novo.':
+        'Selection canceled. Drag over a passage to start again.',
+    'Todos os espaços foram destravados.':
+        'All spaces were unlocked.',
+    'Travar este espaço':
+        'Lock this space',
+    'Trecho escolhido. Agora arraste sobre o trecho correspondente em outro PDF (Esc cancela).':
+        'Passage chosen. Now drag over the matching passage in another PDF (Esc cancels).',
+    'Trechos alinhados: o início e o fim ficam na mesma altura. Botão direito na barra verde desfaz.':
+        'Passages aligned: their start and end are at the same height. Right-click the green bar to undo.',
     '◀ ▶ ou setas do teclado: avançam todos juntos  ·  ◀ ▶ de um painel: escolhem qual página dele fica ao lado da referência':
         '◀ ▶ or arrow keys: move all together  ·  a pane’s ◀ ▶: choose which of its pages sits next to the reference',
     'Rolagem contínua':

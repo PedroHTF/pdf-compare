@@ -59,6 +59,7 @@ from app.services.content_align import (
     align_pages,
     build_rows,
     combined_anchors,
+    document_lines,
     match_lines,
     rows_key,
 )
@@ -195,6 +196,7 @@ class MainWindow(QMainWindow):
         self._heights: Dict[int, List[float]] = {}  # alturas das páginas por PDF (uid)
         self._strip_position: Optional[int] = None  # posição já mostrada na rolagem contínua
         self._pick: Optional[Tuple[int, int, float]] = None   # 1º ponto de "Alinhar este trecho com…"
+        self._region_pick: Optional[tuple] = None   # 1º trecho de "Alinhar seleções": (painel, início, fim)
         self._visual_cache: "OrderedDict[tuple, tuple]" = OrderedDict()   # diferença visual por par de páginas
         self.reference_uid: Optional[int] = None   # PDF de referência (None = o primeiro)
         self.chain_mode = False                    # cada PDF comparado com o anterior
@@ -298,6 +300,14 @@ class MainWindow(QMainWindow):
                                         tr("Desfazer ajustes individuais: todos voltam a mostrar a mesma página"),
                                         S.SP_BrowserReload)
         self._realign_tip = self.act_realign.toolTip()
+        self.act_align_regions = self._action(
+            tr("Alinhar &seleções"), self.toggle_align_regions, ["Ctrl+Shift+A"],
+            tr("Arraste sobre um trecho em um PDF e depois sobre o trecho correspondente em outro: "
+               "os dois ficam alinhados na rolagem contínua"), checkable=True)
+        self.act_align_regions.setIconText(tr("Alinhar seleções"))
+        self.act_unlock_gaps = self._action(tr("Destravar todos os espaços"), self.unlock_all_gaps, [],
+                                            tr("Os espaços travados voltam a poder ser ajustados e "
+                                               "“Realinhar” passa a desfazê-los"))
 
         self.act_find = self._action(tr("&Pesquisar"), self.focus_search, ["Ctrl+F"], tr("Pesquisar em todos os PDFs"))
         self.act_hit_next = self._action(tr("Próxima ocorrência"), lambda: self.next_hit_all(+1), ["F3"],
@@ -427,6 +437,8 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         m.addAction(self.act_realign)
         m.addAction(self.act_content_align)
+        m.addAction(self.act_align_regions)
+        m.addAction(self.act_unlock_gaps)
         m.addSeparator()
         m.addActions([self.act_find, self.act_hit_next, self.act_hit_prev])
         m.addSeparator()
@@ -844,11 +856,13 @@ class MainWindow(QMainWindow):
             pane.strip_scrolled.connect(self._on_strip_scrolled)
             pane.gap_resized.connect(self._on_gap_resized)
             pane.point_picked.connect(self._on_point_picked)
+            pane.region_picked.connect(self._on_region_picked)
             pane.relayout_requested.connect(self._on_relayout)
             pane.set_view_mode(self.act_continuous.isChecked())
             pane.mark_style = self.mark_style
             pane.scroll.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
             pane.set_tool(self.tool)
+            pane.region_mode = self.act_align_regions.isChecked()
             self.panes.append(pane)
             self.grid.addWidget(pane, i // cols, i % cols)
         if n == 1:
@@ -863,6 +877,7 @@ class MainWindow(QMainWindow):
         self._strip_position = None
         self._layouts_key = None
         self._pick = None
+        self._region_pick = None
         if self.reference_uid is not None and all(s.uid != self.reference_uid for s in self.sessions):
             self.reference_uid = None      # a referência foi fechada: volta a ser o 1º PDF
         self._update_roles()
@@ -902,7 +917,11 @@ class MainWindow(QMainWindow):
             self._strip_position = None
             self.update_alignment()
             self.refresh()
-            self.statusBar().showMessage(tr("Ajustes manuais do alinhamento desfeitos."), 3000)
+            if self._has_locked_gaps():
+                self.statusBar().showMessage(tr("Ajustes manuais do alinhamento desfeitos (os espaços travados "
+                                                "foram mantidos)."), 4000)
+            else:
+                self.statusBar().showMessage(tr("Ajustes manuais do alinhamento desfeitos."), 3000)
             return
         if self.sessions:
             self.nav.realign()
@@ -1143,6 +1162,11 @@ class MainWindow(QMainWindow):
         self.act_first.setEnabled(has and not self.nav.at_start)
         self.act_next.setEnabled(has and not self.nav.at_end)
         self.act_last.setEnabled(has and not self.nav.at_end)
+        self.act_align_regions.setEnabled(n >= 2)
+        if self.act_align_regions.isChecked() and (n < 2 or not self.act_continuous.isChecked()
+                                                   or not self.act_content_align.isChecked()):
+            self._set_region_mode(False)
+        self.act_unlock_gaps.setEnabled(has and self._has_locked_gaps())
         if self.nav.by_rows:
             self.act_realign.setEnabled(has and self._has_manual_alignment())
             self.act_realign.setToolTip(tr("Desfazer os ajustes manuais do alinhamento por conteúdo (Ctrl+L)"))
@@ -1165,8 +1189,8 @@ class MainWindow(QMainWindow):
         elif n == 1:
             hint = tr("Adicione pelo menos mais um PDF para comparar.")
         elif self.act_continuous.isChecked() and self.nav.by_rows:
-            hint = tr("Role qualquer PDF: os outros acompanham  ·  botão direito: inserir espaço ou "
-                      "alinhar um trecho  ·  arraste a alça de um espaço para ajustar")
+            hint = tr("Role qualquer PDF: os outros acompanham  ·  botão direito: inserir, remover ou travar "
+                      "espaço  ·  Ctrl+Shift+A: alinhar seleções  ·  arraste a alça de um espaço para ajustar")
         elif self.nav.by_rows:
             hint = tr("◀ ▶ ou setas do teclado: avançam todos juntos  ·  ◀ ▶ de um painel: escolhem qual "
                       "página dele fica ao lado da referência")
@@ -1211,6 +1235,7 @@ class MainWindow(QMainWindow):
             ("Esc", tr("Cancelar o desenho, desmarcar ou voltar à seleção")),
             ("Ctrl+Shift+M", tr("Mostrar/ocultar a lista de marcações")),
             ("Ctrl+Shift+L", tr("Alinhar por conteúdo")),
+            ("Ctrl+Shift+A", tr("Alinhar seleções: arraste sobre um trecho em cada PDF")),
             ("Ctrl+Shift+C", tr("Rolagem contínua")),
             ("Ctrl+Shift+V", tr("Diferença visual")),
             ("Ctrl+Shift+R", tr("Relatório de diferenças")),
@@ -1552,6 +1577,8 @@ class MainWindow(QMainWindow):
         self.set_tool(TOOL_NONE if self.tool == tool else tool)
 
     def set_tool(self, tool: str) -> None:
+        if tool != TOOL_NONE and self.act_align_regions.isChecked():
+            self._set_region_mode(False)
         self.tool = tool
         for kind, action in self.tool_actions.items():
             action.setChecked(kind == tool)
@@ -1781,6 +1808,16 @@ class MainWindow(QMainWindow):
     def escape(self) -> None:
         if self._pick is not None:
             self._end_pick(tr("Alinhamento de trecho cancelado."))
+            return
+        if any([pane.cancel_region() for pane in self.panes]):
+            return
+        if self._region_pick is not None:
+            self._region_pick = None
+            self._refresh_region_marks()
+            self.statusBar().showMessage(tr("Seleção cancelada. Arraste sobre um trecho para começar de novo."), 4000)
+            return
+        if self.act_align_regions.isChecked():
+            self._set_region_mode(False)
             return
         if any([pane.cancel_drawing() for pane in self.panes]):
             return
@@ -2288,7 +2325,7 @@ class MainWindow(QMainWindow):
                rows_key(self.nav.rows) if aligned else "", self.indexer.ocr_enabled)
         if key == self._layouts_key:
             return self._layouts
-        anchors, manual = {}, {}
+        anchors, manual, forced = {}, {}, {}
         if aligned:
             for j in range(len(self.sessions)):
                 gap_key = self._gap_key(j)
@@ -2298,15 +2335,17 @@ class MainWindow(QMainWindow):
                     continue
                 match = self._pair_match(primary, j)
                 if match is not None and gap_key:
-                    anchors[j] = combined_anchors(match, self.align_store.manual_lines(gap_key))
+                    forced[j] = self.align_store.forced_anchors(gap_key)
+                    anchors[j] = combined_anchors(match, forced[j])
         heights = [self._page_heights(i) for i in range(len(self.sessions))]
-        self._layouts = compute_layouts(heights, scales, primary, anchors, manual, aligned)
+        self._layouts = compute_layouts(heights, scales, primary, anchors, manual, aligned, forced)
         self._layouts_key = key
         return self._layouts
 
     def _refresh_continuous(self, active: bool) -> None:
         layouts = self.strip_layouts()
         focused = None
+        self._refresh_region_marks(update=False)
         for i, pane in enumerate(self.panes):
             scrolled = pane.render_continuous(layouts[i], self.nav.hits[i], self.nav.current_hit(i),
                                               self.nav.diffs[i], self.nav.current_diff(i),
@@ -2395,10 +2434,16 @@ class MainWindow(QMainWindow):
 
     def _manual_gap_at(self, index: int, page: int, y: float) -> float:
         key = self._gap_key(index)
-        for p, gy, h in self.align_store.manual_gaps(key) if key else []:
-            if p == page and abs(gy - y) < 1.0:
-                return h
-        return 0.0
+        entry = self.align_store.gap_entry(key, page, y) if key else None
+        return entry[2] if entry else 0.0
+
+    def _gap_scale(self, index: int) -> float:
+        return max(self._layouts[index].scale if index < len(self._layouts) else 1.0, 1e-6)
+
+    def _has_locked_gaps(self) -> bool:
+        primary = self.reference_index()
+        return any(self.align_store.has_locked(k) for j in range(len(self.sessions))
+                   if (k := self._align_key(primary, j)))
 
     def _on_gap_resized(self, index: int, page: int, y: float, manual_points: float) -> None:
         key = self._gap_key(index)
@@ -2414,13 +2459,152 @@ class MainWindow(QMainWindow):
         self.align_store.set_gap(key, page, y, self._manual_gap_at(index, page, y) + points)
         self._after_alignment_edit(tr("Espaço inserido. Arraste a alça embaixo dele para ajustar a altura."))
 
-    def remove_gap(self, index: int, gap) -> None:
+    def remove_gap(self, index: int, gap, lock: bool = False) -> None:
+        """Remove o espaço: ele some e o alinhamento não o recria logo abaixo."""
         key = self._gap_key(index)
         if key is None or gap is None:
             return
-        scale = self._layouts[index].scale if index < len(self._layouts) else 1.0
-        self.align_store.set_gap(key, gap.page, gap.y, -gap.auto / max(scale, 1e-6))
-        self._after_alignment_edit(tr("Espaço removido. Realinhar desfaz os ajustes manuais."))
+        self.align_store.remove_gap(key, gap.page, gap.y, locked=True if lock else None)
+        if lock or gap.locked:
+            message = tr("Espaço removido e travado: o alinhamento automático não o recria.")
+        else:
+            message = tr("Espaço removido. Realinhar desfaz os ajustes manuais.")
+        self._after_alignment_edit(message)
+
+    def lock_gap(self, index: int, gap, locked: bool = True) -> None:
+        """Trava (ou destrava) o espaço com a altura que ele tem agora."""
+        key = self._gap_key(index)
+        if key is None or gap is None:
+            return
+        self.align_store.lock_gap(key, gap.page, gap.y, gap.height / self._gap_scale(index), locked)
+        self._after_alignment_edit(
+            tr("Espaço travado: o alinhamento automático não muda nem recria este espaço, e Realinhar o mantém.")
+            if locked else tr("Espaço destravado."))
+
+    def unlock_all_gaps(self) -> None:
+        primary = self.reference_index()
+        for j in range(len(self.sessions)):
+            key = self._align_key(primary, j)
+            if key:
+                self.align_store.unlock_all(key)
+        self._after_alignment_edit(tr("Todos os espaços foram destravados."))
+
+    # --- alinhar seleções ----------------------------------------------------------------------
+    def toggle_align_regions(self) -> None:
+        self._set_region_mode(self.act_align_regions.isChecked(), announce=True)
+
+    def _set_region_mode(self, on: bool, announce: bool = False) -> None:
+        if on and len(self.sessions) < 2:
+            on = False
+        self.act_align_regions.setChecked(False)   # liga só depois da rolagem contínua e do alinhamento
+        self._region_pick = None
+        if on:
+            self._end_pick()
+            if self.tool != TOOL_NONE:
+                self.set_tool(TOOL_NONE)
+            if not self.act_content_align.isChecked():
+                self.act_content_align.setChecked(True)
+                self.toggle_content_align()
+            if not self.act_continuous.isChecked():
+                self.act_continuous.setChecked(True)
+                self.toggle_continuous()
+        self.act_align_regions.setChecked(on)
+        for pane in self.panes:
+            pane.region_mode = on
+            pane.cancel_region()
+        self._apply_region_cursor()
+        self._refresh_region_marks()
+        if announce:
+            self.statusBar().showMessage(
+                tr("Alinhar seleções: arraste sobre um trecho em um PDF e depois sobre o trecho "
+                   "correspondente em outro. Esc para sair.") if on else tr("Alinhar seleções desligado."), 8000)
+
+    def _apply_region_cursor(self) -> None:
+        if self.act_align_regions.isChecked() and self._pick is None:
+            for pane in self.panes:
+                pane.canvas.setCursor(Qt.CursorShape.CrossCursor)
+
+    def _snap_region(self, index: int, p0: int, y0: float, p1: int, y1: float):
+        """Ajusta o trecho arrastado às linhas de texto que ele cobre: (início, fim), cada um (página, y)."""
+        if (p1, y1) < (p0, y0):
+            (p0, y0), (p1, y1) = (p1, y1), (p0, y0)
+        index_doc = self.indexer.index_for(self.sessions[index])
+        lines = document_lines(index_doc) if index_doc is not None and index_doc.complete else []
+        chosen = [k for k, line in enumerate(lines) if (line.page, line.bottom) > (p0, y0)
+                  and (line.page, line.y) < (p1, y1)]
+        if not chosen:
+            if p0 == p1 and y1 - y0 < 3:
+                return (p0, y0), (p0, y0)
+            return (p0, y0), (p1, y1)
+        first, last = lines[chosen[0]], lines[chosen[-1]]
+        nxt = lines[chosen[-1] + 1] if chosen[-1] + 1 < len(lines) else None
+        if nxt is not None and nxt.page == last.page:
+            end = (nxt.page, nxt.cut)
+        else:
+            height = self._page_heights(index)[last.page] if last.page < len(self._page_heights(index)) else last.bottom
+            end = (last.page, min(last.bottom + 2.0, height))
+        return (first.page, first.cut), end
+
+    def _region_marks(self, index: int) -> list:
+        primary = self.reference_index()
+        marks = []
+        if index == primary:
+            for j in range(len(self.sessions)):
+                key = self._gap_key(j) if j != primary else None
+                for b in self.align_store.manual_blocks(key) if key else []:
+                    marks.append((b[0], b[1], b[2], b[3], "block", (j, b)))
+        else:
+            key = self._gap_key(index)
+            for b in self.align_store.manual_blocks(key) if key else []:
+                marks.append((b[4], b[5], b[6], b[7], "block", (index, b)))
+        if self._region_pick is not None and self._region_pick[0] == index:
+            _, (sp, sy), (ep, ey) = self._region_pick
+            marks.append((sp, sy, ep, ey, "pending", None))
+        return marks
+
+    def _refresh_region_marks(self, update: bool = True) -> None:
+        for i, pane in enumerate(self.panes):
+            pane.region_marks = self._region_marks(i) if self.act_continuous.isChecked() else []
+            if update:
+                pane.canvas.update()
+
+    def _on_region_picked(self, index: int, p0: int, y0: float, p1: int, y1: float) -> None:
+        start, end = self._snap_region(index, p0, y0, p1, y1)
+        if self._region_pick is None or self._region_pick[0] == index:
+            self._region_pick = (index, start, end)
+            self._refresh_region_marks()
+            self.statusBar().showMessage(tr("Trecho escolhido. Agora arraste sobre o trecho correspondente em "
+                                            "outro PDF (Esc cancela)."), 10000)
+            return
+        first, s1, e1 = self._region_pick
+        self._region_pick = None
+        primary = self.reference_index()
+        layouts = self.strip_layouts()
+
+        def on_primary(doc: int, point: Tuple[int, float]) -> Tuple[int, float]:
+            return layouts[primary].from_strip(layouts[doc].to_strip(*point))
+
+        if first == primary:
+            other, block = index, (s1, e1, start, end)
+        elif index == primary:
+            other, block = first, (start, end, s1, e1)
+        else:   # dois PDFs que não são a referência: liga pelo trecho da referência ao lado do 2º
+            other, block = first, (on_primary(index, start), on_primary(index, end), s1, e1)
+        key = self._gap_key(other)
+        if key is None:
+            self._refresh_region_marks()
+            return
+        self.align_store.add_block(key, *block)
+        self._after_alignment_edit(tr("Trechos alinhados: o início e o fim ficam na mesma altura. "
+                                      "Botão direito na barra verde desfaz."))
+
+    def remove_block(self, ref) -> None:
+        doc, block = ref
+        key = self._gap_key(doc)
+        if key is None:
+            return
+        self.align_store.remove_block(key, block)
+        self._after_alignment_edit(tr("Alinhamento do trecho desfeito."))
 
     def start_pick(self, index: int, page: int, y: float) -> None:
         self._pick = (index, page, y)
@@ -2434,6 +2618,7 @@ class MainWindow(QMainWindow):
         for pane in self.panes:
             pane.pick_mode = False
             pane.set_tool(self.tool)
+        self._apply_region_cursor()
         if message:
             self.statusBar().showMessage(message, 4000)
 
@@ -2660,15 +2845,37 @@ class MainWindow(QMainWindow):
         if len(self.sessions) < 2:
             return
         menu = QMenu(self)
-        insert = remove = pick = None
+        gap_actions = {}
+        gap = None
         if self.act_continuous.isChecked() and self.nav.by_rows and page is not None:
             gap = self.panes[index].last_context_gap
-            insert = menu.addAction(tr("Inserir espaço aqui"))
+            block = self.panes[index].last_context_block
             if gap is not None:
-                remove = menu.addAction(tr("Remover este espaço"))
                 page, y = gap.page, gap.y
+            insert = menu.addAction(tr("Inserir espaço aqui"))
+            insert.setEnabled(gap is None or not gap.locked)
+            gap_actions[insert] = lambda: self.insert_gap(index, page, y)
+            if gap is not None:
+                if not gap.removed:
+                    remove = menu.addAction(tr("Remover este espaço"))
+                    gap_actions[remove] = lambda: self.remove_gap(index, gap)
+                if gap.locked:
+                    unlock = menu.addAction(tr("Destravar este espaço"))
+                    gap_actions[unlock] = lambda: self.lock_gap(index, gap, False)
+                else:
+                    lock = menu.addAction(tr("Travar este espaço"))
+                    lock.setToolTip(tr("O alinhamento automático não muda nem recria este espaço"))
+                    gap_actions[lock] = lambda: self.lock_gap(index, gap, True)
+                    if not gap.removed:
+                        remove_lock = menu.addAction(tr("Remover e travar este espaço"))
+                        gap_actions[remove_lock] = lambda: self.remove_gap(index, gap, lock=True)
             pick = menu.addAction(tr("Alinhar este trecho com…"))
             pick.setToolTip(tr("Depois, clique no trecho correspondente em outro PDF"))
+            gap_actions[pick] = lambda: self.start_pick(index, page, y)
+            menu.addAction(self.act_align_regions)
+            if block is not None:
+                undo_block = menu.addAction(tr("Desfazer o alinhamento deste trecho"))
+                gap_actions[undo_block] = lambda: self.remove_block(block)
             menu.addSeparator()
         use = menu.addAction(tr("Usar como referência da comparação"))
         use.setEnabled(self.chain_mode or index != self.reference_index())
@@ -2677,13 +2884,8 @@ class MainWindow(QMainWindow):
         chain.setChecked(self.chain_mode)
         chain.setEnabled(len(self.sessions) >= 3)
         chosen = menu.exec(global_pos)
-        if chosen is not None and chosen in (insert, remove, pick):
-            if chosen is insert:
-                self.insert_gap(index, page, y)
-            elif chosen is remove:
-                self.remove_gap(index, self.panes[index].last_context_gap)
-            else:
-                self.start_pick(index, page, y)
+        if chosen in gap_actions:
+            gap_actions[chosen]()
             return
         if chosen is use:
             self.set_reference(index)

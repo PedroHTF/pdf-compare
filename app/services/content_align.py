@@ -259,28 +259,45 @@ def build_rows(page_counts: Sequence[int], primary: int, pairs: Dict[int, Sequen
     return rows
 
 
+def _consistent(x: Anchor, y: Anchor) -> bool:
+    """Duas âncoras podem valer juntas: mesma ordem nos dois PDFs e pontos diferentes no a."""
+    return ((x[0], x[1]) < (y[0], y[1])) == ((x[2], x[3]) < (y[2], y[3])) and (x[0], x[1]) != (y[0], y[1])
+
+
 def combined_anchors(match: PairMatch, manual: Sequence[Anchor] = ()) -> List[Anchor]:
-    """Âncoras automáticas mais as definidas pelo usuário ("Alinhar este trecho com…").
+    """Âncoras automáticas mais as definidas pelo usuário ("Alinhar este trecho com…", seleções).
 
     As automáticas que ficariam fora de ordem em relação a uma manual são descartadas.
     """
-    keep = []
-    for anchor in match.anchors:
-        a, b = (anchor[0], anchor[1]), (anchor[2], anchor[3])
-        if all(((m[0], m[1]) < a) == ((m[2], m[3]) < b) and (m[0], m[1]) != a for m in manual):
-            keep.append(anchor)
-    return sorted(keep + list(manual))
+    keep = [a for a in match.anchors if all(_consistent(a, m) for m in manual)]
+    return sorted(set(keep) | set(manual))
+
+
+# trecho alinhado por seleção: início e fim no a, início e fim no b (cada ponto: página, y)
+Block = Tuple[int, float, int, float, int, float, int, float]
+
+
+def block_anchors(block: Sequence) -> List[Anchor]:
+    """Um trecho alinhado vira duas âncoras forçadas: o início e o fim dele nos dois PDFs."""
+    pa0, ya0, pa1, ya1, pb0, yb0, pb1, yb1 = block
+    start, end = (pa0, ya0, pb0, yb0), (pa1, ya1, pb1, yb1)
+    return [start, end] if _consistent(start, end) else [start]
 
 
 def rows_key(rows: Sequence[Row]) -> str:
     return hashlib.sha1(repr(list(rows)).encode()).hexdigest()
 
 
+GapEntry = Tuple[int, float, float, bool, bool]   # (página, y, altura em pontos, fixo, travado)
+STORE_KEYS = ("pages", "gaps", "lines", "blocks")
+
+
 class AlignmentStore:
     """Ajustes manuais de alinhamento, por par de PDFs (identificados pelo conteúdo).
 
-    Guarda os pares de páginas fixados pelo usuário e os espaços da rolagem
-    contínua. Reaparecem ao abrir os mesmos PDFs de novo.
+    Guarda os pares de páginas fixados pelo usuário, os espaços da rolagem
+    contínua (ajustados, removidos ou travados), as linhas e os trechos
+    alinhados à mão. Reaparecem ao abrir os mesmos PDFs de novo.
     """
 
     def __init__(self, folder: Path | str) -> None:
@@ -306,7 +323,7 @@ class AlignmentStore:
         data = self._cache.get(key, {})
         path = self.folder / f"{key}.json"
         try:
-            if not any(data.get(k) for k in ("pages", "gaps", "lines")):
+            if not any(data.get(k) for k in STORE_KEYS):
                 path.unlink(missing_ok=True)
                 return
             self.folder.mkdir(parents=True, exist_ok=True)
@@ -330,18 +347,48 @@ class AlignmentStore:
         self._load(key)["pages"] = sorted(kept + [(page_a, page_b)])
         self._save(key)
 
-    # espaços da rolagem contínua: (página, y, altura extra em pontos)
-    def manual_gaps(self, key: str) -> List[Tuple[int, float, float]]:
-        try:
-            return [(int(p), float(y), float(h)) for p, y, h in self._load(key).get("gaps", [])]
-        except (TypeError, ValueError):
-            return []
+    # espaços da rolagem contínua: (página, y, altura em pontos, fixo, travado)
+    def manual_gaps(self, key: str) -> List[GapEntry]:
+        out: List[GapEntry] = []
+        for item in self._load(key).get("gaps", []):
+            try:   # versões anteriores guardavam só (página, y, ajuste)
+                p, y, h, *flags = item
+                out.append((int(p), float(y), float(h), bool(flags[0]) if flags else False,
+                            bool(flags[1]) if len(flags) > 1 else False))
+            except (TypeError, ValueError):
+                continue
+        return out
 
-    def set_gap(self, key: str, page: int, y: float, height: float) -> None:
-        gaps = [(p, gy, h) for p, gy, h in self.manual_gaps(key) if not (p == page and abs(gy - y) < 1.0)]
-        if abs(height) >= 0.5:
-            gaps.append((page, round(y, 1), round(height, 1)))
-        self._load(key)["gaps"] = sorted(gaps)
+    def gap_entry(self, key: str, page: int, y: float) -> Optional[GapEntry]:
+        return next((g for g in self.manual_gaps(key) if g[0] == page and abs(g[1] - y) < 1.0), None)
+
+    def set_gap(self, key: str, page: int, y: float, height: float,
+                fixed: Optional[bool] = None, locked: Optional[bool] = None) -> None:
+        """Ajuste (ou altura final, se fixo) do espaço em (página, y). None mantém o que já era."""
+        current = self.gap_entry(key, page, y)
+        fixed = (current[3] if current else False) if fixed is None else fixed
+        locked = (current[4] if current else False) if locked is None else locked
+        gaps = [g for g in self.manual_gaps(key) if not (g[0] == page and abs(g[1] - y) < 1.0)]
+        if fixed or locked or abs(height) >= 0.5:
+            gy = current[1] if current else round(y, 1)
+            gaps.append((page, gy, round(height, 1), bool(fixed), bool(locked)))
+        self._load(key)["gaps"] = [list(g) for g in sorted(gaps)]
+        self._save(key)
+
+    def remove_gap(self, key: str, page: int, y: float, locked: Optional[bool] = None) -> None:
+        """O espaço fica com altura zero e o alinhamento não o recria logo abaixo."""
+        self.set_gap(key, page, y, 0.0, fixed=True, locked=locked)
+
+    def lock_gap(self, key: str, page: int, y: float, height: float, locked: bool = True) -> None:
+        """Trava (ou destrava) o espaço com a altura que ele tem agora."""
+        self.set_gap(key, page, y, height, fixed=True, locked=locked)
+
+    def has_locked(self, key: str) -> bool:
+        return any(g[4] for g in self.manual_gaps(key))
+
+    def unlock_all(self, key: str) -> None:
+        gaps = [(p, y, h, f, False) for p, y, h, f, _ in self.manual_gaps(key)]
+        self._load(key)["gaps"] = [list(g) for g in gaps if g[3] or abs(g[2]) >= 0.5]
         self._save(key)
 
     # linhas alinhadas à mão na rolagem contínua: (página a, y a, página b, y b)
@@ -351,18 +398,59 @@ class AlignmentStore:
         except (TypeError, ValueError):
             return []
 
+    def _drop_crossing(self, key: str, new: Sequence[Anchor]) -> None:
+        """Tira as linhas e os trechos que ficariam fora de ordem em relação às novas âncoras."""
+        data = self._load(key)
+        data["lines"] = [list(l) for l in self.manual_lines(key) if all(_consistent(l, a) for a in new)]
+        data["blocks"] = [list(b) for b in self.manual_blocks(key)
+                          if all(_consistent(x, a) for x in block_anchors(b) for a in new)]
+
     def add_line(self, key: str, anchor: Anchor) -> None:
         pa, ya, pb, yb = anchor
-        before = ((pa, ya), (pb, yb))
-        kept = [l for l in self.manual_lines(key)
-                if ((l[0], l[1]) < before[0]) == ((l[2], l[3]) < before[1]) and (l[0], l[1]) != before[0]]
-        self._load(key)["lines"] = sorted(kept + [(pa, round(ya, 1), pb, round(yb, 1))])
+        anchor = (pa, round(ya, 1), pb, round(yb, 1))
+        self._drop_crossing(key, [anchor])
+        self._load(key)["lines"] = [list(l) for l in sorted(self.manual_lines(key) + [anchor])]
         self._save(key)
 
-    def has_manual(self, key: str) -> bool:
-        data = self._load(key)
-        return any(data.get(k) for k in ("pages", "gaps", "lines"))
+    # trechos alinhados por seleção (ver Block)
+    def manual_blocks(self, key: str) -> List[Block]:
+        out: List[Block] = []
+        for item in self._load(key).get("blocks", []):
+            try:
+                pa0, ya0, pa1, ya1, pb0, yb0, pb1, yb1 = item
+            except (TypeError, ValueError):
+                continue
+            out.append((int(pa0), float(ya0), int(pa1), float(ya1), int(pb0), float(yb0), int(pb1), float(yb1)))
+        return out
 
-    def clear(self, key: str) -> None:
-        self._cache[key] = {}
+    def add_block(self, key: str, start_a: Tuple[int, float], end_a: Tuple[int, float],
+                  start_b: Tuple[int, float], end_b: Tuple[int, float]) -> None:
+        block = (start_a[0], round(start_a[1], 1), end_a[0], round(end_a[1], 1),
+                 start_b[0], round(start_b[1], 1), end_b[0], round(end_b[1], 1))
+        self._drop_crossing(key, block_anchors(block))
+        self._load(key)["blocks"] = [list(b) for b in sorted(self.manual_blocks(key) + [block])]
+        self._save(key)
+
+    def remove_block(self, key: str, block: Sequence) -> None:
+        target = tuple(block)
+        self._load(key)["blocks"] = [list(b) for b in self.manual_blocks(key) if b != target]
+        self._save(key)
+
+    def forced_anchors(self, key: str) -> List[Anchor]:
+        """Âncoras que o usuário definiu: linhas e início/fim dos trechos alinhados."""
+        out = list(self.manual_lines(key))
+        for block in self.manual_blocks(key):
+            out += block_anchors(block)
+        return sorted(set(out))
+
+    def has_manual(self, key: str) -> bool:
+        """Há ajustes que "Realinhar" desfaz (os espaços travados ficam)."""
+        data = self._load(key)
+        if any(data.get(k) for k in ("pages", "lines", "blocks")):
+            return True
+        return any(not g[4] for g in self.manual_gaps(key))
+
+    def clear(self, key: str, keep_locked: bool = True) -> None:
+        locked = [list(g) for g in self.manual_gaps(key) if g[4]] if keep_locked else []
+        self._cache[key] = {"gaps": locked} if locked else {}
         self._save(key)

@@ -10,8 +10,19 @@ lugar onde ele estaria.
 PDF (ver content_align). O cálculo percorre as âncoras em ordem; quando um lado
 está "atrasado", recebe um espaço na posição da âncora.
 
-Espaços manuais (definidos pelo usuário) ficam onde ele colocou e valem até a
-próxima âncora; se estão no mesmo ponto de um espaço automático, somam-se a ele.
+Espaços manuais (definidos pelo usuário):
+- ajuste (arrastar a alça, "Inserir espaço aqui"): soma-se ao espaço automático
+  do mesmo ponto. O que ele acrescenta vale até a próxima âncora, onde o
+  alinhamento volta a compensar (os outros PDFs recebem o espaço).
+- fixo (removido, ou travado): a altura é a escolhida pelo usuário, seja qual for
+  o automático. O que ele tira do automático (um espaço removido ou diminuído) é
+  aceito: o alinhamento não recria esse espaço mais abaixo enquanto a mesma
+  diferença continuar; só volta a alinhar quando os PDFs se reencontram sozinhos
+  (ou a diferença muda). Diminuir um espaço pela alça também funciona assim.
+- travado: fixo que o usuário protegeu: não se arrasta e "Realinhar" não desfaz.
+
+Âncoras forçadas (trechos alinhados pelo usuário) sempre alinham, mesmo onde
+havia uma diferença aceita.
 
 Unidades: pontos do PDF para posições dentro da página; pixels de tela para a
 faixa (cada PDF pode ter a própria escala). Sem dependência de interface gráfica.
@@ -21,7 +32,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 from app.services.content_align import Anchor
 
@@ -29,7 +40,12 @@ PAGE_SPACING = 10.0     # pixels entre páginas
 TOLERANCE = 6.0         # diferenças menores (pixels) são ignoradas
 ANCHOR_MARGIN = 0.0     # as âncoras já vêm no ponto de corte entre as linhas (content_align)
 
-ManualGap = Tuple[int, float, float]   # (página, y em pontos, altura em pontos)
+class ManualGap(NamedTuple):
+    page: int
+    y: float               # pontos, na página
+    height: float          # pontos: ajuste (somado ao automático) ou altura final (fixed)
+    fixed: bool = False    # altura final escolhida pelo usuário (removido = 0)
+    locked: bool = False   # travado: não muda com o alinhamento nem com "Realinhar"
 
 
 @dataclass
@@ -38,11 +54,25 @@ class Gap:
     page: int
     y: float               # posição no PDF (pontos, na página)
     auto: float            # altura automática (pixels)
-    manual: float = 0.0    # altura acrescentada pelo usuário (pixels; pode ser negativa)
+    manual: float = 0.0    # pixels: ajuste do usuário (pode ser negativo) ou, se fixed, a altura final
+    fixed: bool = False
+    locked: bool = False
+    contributed: float = field(default=0.0, repr=False, compare=False)   # já somado ao deslocamento
 
     @property
     def height(self) -> float:
+        if self.fixed:
+            return max(self.manual, 0.0)
         return max(self.auto + self.manual, 0.0)
+
+    @property
+    def adjusted(self) -> bool:
+        """O usuário mexeu neste espaço (é desenhado com outra cor)."""
+        return self.fixed or abs(self.manual) > 0.5
+
+    @property
+    def removed(self) -> bool:
+        return self.fixed and self.manual <= 0.5
 
     def key(self) -> Tuple[int, float]:
         return (self.page, round(self.y, 1))
@@ -123,7 +153,7 @@ def _build(layout: StripLayout, gaps: List[Gap]) -> StripLayout:
     """Monta os pedaços (páginas cortadas nos espaços) a partir dos espaços de um PDF."""
     by_page: Dict[int, List[Gap]] = {}
     for g in gaps:
-        if g.height > 0.5:
+        if g.height > 0.5 or g.locked:      # travado e removido: fica uma marca de altura zero
             by_page.setdefault(g.page, []).append(g)
     pieces: List[Piece] = []
     y = 0.0
@@ -147,6 +177,13 @@ def _build(layout: StripLayout, gaps: List[Gap]) -> StripLayout:
     return layout
 
 
+def _manual_gap(item) -> ManualGap:
+    return item if isinstance(item, ManualGap) else ManualGap(*item)
+
+
+SAME_POINT = 1.0   # pontos: espaços a menos disso na mesma página são o mesmo espaço
+
+
 def compute_layouts(
     page_heights: Sequence[Sequence[float]],
     scales: Sequence[float],
@@ -154,14 +191,19 @@ def compute_layouts(
     anchors: Optional[Dict[int, Sequence[Anchor]]] = None,
     manual: Optional[Dict[int, Sequence[ManualGap]]] = None,
     aligned: bool = True,
+    forced: Optional[Dict[int, Sequence[Anchor]]] = None,
 ) -> List[StripLayout]:
-    """Disposição de cada PDF. `anchors[d]`: (pág. principal, y, pág. d, y) de linhas iguais."""
+    """Disposição de cada PDF. `anchors[d]`: (pág. principal, y, pág. d, y) de linhas iguais.
+
+    `forced[d]`: as âncoras de `anchors[d]` definidas pelo usuário (sempre alinham).
+    """
     n = len(page_heights)
     layouts = [StripLayout(scales[d], list(page_heights[d])) for d in range(n)]
     if not aligned or n < 2:
         return [_build(l, []) for l in layouts]
     anchors = anchors or {}
     manual = manual or {}
+    forced_set = {d: set(items) for d, items in (forced or {}).items()}
     tops = [_stack(page_heights[d], scales[d]) for d in range(n)]
 
     def strip(d: int, page: int, y: float) -> float:
@@ -169,68 +211,110 @@ def compute_layouts(
         return tops[d][page] + max(0.0, min(y, page_heights[d][page])) * scales[d]
 
     # espaços manuais de cada PDF, em ordem na faixa
-    manual_gaps: List[List[Tuple[float, Gap]]] = []
+    pending: List[List[Tuple[float, Gap]]] = []
+    gaps: List[List[Gap]] = []
     for d in range(n):
         items = []
-        for page, y, h in manual.get(d, []):
-            if 0 <= page < len(tops[d]):
-                items.append((strip(d, page, y), Gap(d, page, y, 0.0, h * scales[d])))
-        manual_gaps.append(sorted(items, key=lambda t: t[0]))
-    applied = [0] * n          # quantos espaços manuais já entraram, por PDF
+        for entry in manual.get(d, []):
+            m = _manual_gap(entry)
+            if 0 <= m.page < len(tops[d]):
+                g = Gap(d, m.page, m.y, 0.0, m.height * scales[d], bool(m.fixed), bool(m.locked))
+                items.append((strip(d, m.page, m.y), g))
+        items.sort(key=lambda t: t[0])
+        pending.append(items)
+        gaps.append([g for _, g in items])
+    passed = [0] * n           # quantos espaços manuais o percurso já passou, por PDF
     shift = [0.0] * n          # soma dos espaços já inseridos antes do ponto atual, por PDF
-    gaps: List[List[Gap]] = [[g for _, g in manual_gaps[d]] for d in range(n)]
-    gap_at: Dict[Tuple[int, Tuple[int, float]], Gap] = {(d, g.key()): g for d in range(n) for g in gaps[d]}
+    # diferença aceita entre o PDF d e o principal (pixels; > 0: d está "adiantado"), vinda de
+    # espaços removidos ou diminuídos pelo usuário; o alinhamento não a compensa
+    accepted = [0.0] * n
 
     near = 0.5 * max(scales)   # espaço manual a menos de ~0,5 pt da âncora conta como "no mesmo ponto"
 
-    def take_manual(d: int, until: float, inclusive: bool) -> None:
-        items = manual_gaps[d]
-        limit = until + near if inclusive else until - near
-        while applied[d] < len(items) and (items[applied[d]][0] < limit or (inclusive and items[applied[d]][0] <= limit)):
-            shift[d] += items[applied[d]][1].manual
-            applied[d] += 1
+    def sync(g: Gap) -> float:
+        """Soma ao deslocamento do PDF o que mudou na altura do espaço; devolve a mudança."""
+        delta = g.height - g.contributed
+        shift[g.doc] += delta
+        g.contributed = g.height
+        return delta
 
-    def add_auto(d: int, page: int, y: float, height: float) -> None:
-        g = gap_at.get((d, (page, round(y, 1))))
+    def pass_manual(d: int, until: float, inclusive: bool) -> None:
+        items = pending[d]
+        limit = until + near if inclusive else until - near
+        while passed[d] < len(items) and (items[passed[d]][0] < limit or (inclusive and items[passed[d]][0] <= limit)):
+            sync(items[passed[d]][1])
+            passed[d] += 1
+
+    def find(d: int, page: int, y: float) -> Optional[Gap]:
+        best = None
+        for g in gaps[d]:
+            if g.page == page and abs(g.y - y) < SAME_POINT and (best is None or abs(g.y - y) < abs(best.y - y)):
+                best = g
+        return best
+
+    def request(d: int, page: int, y: float, height: float) -> float:
+        """Pede um espaço automático; devolve quanto o PDF desceu de fato (espaços fixos limitam)."""
+        g = find(d, page, y)
         if g is None:
             g = Gap(d, page, y, 0.0)
             gaps[d].append(g)
-            gap_at[(d, g.key())] = g
         g.auto += height
-        shift[d] += height
+        return sync(g)
+
+    def hold(d: int, diff: float) -> float:
+        """Parte da diferença que já foi aceita pelo usuário (some quando os PDFs se reencontram)."""
+        a = accepted[d]
+        if a > 0:
+            a = a if diff >= a - TOLERANCE else min(a, max(diff, 0.0))
+        elif a < 0:
+            a = a if diff <= a + TOLERANCE else max(a, min(diff, 0.0))
+        accepted[d] = a
+        return a
 
     events = []
     for d, items in anchors.items():
         if d == primary or not (0 <= d < n):
             continue
-        for pa, ya, pb, yb in items:
+        for anchor in items:
+            pa, ya, pb, yb = anchor
+            is_forced = anchor in forced_set.get(d, ())
             ya, yb = max(ya - ANCHOR_MARGIN, 0.0), max(yb - ANCHOR_MARGIN, 0.0)
-            events.append((strip(primary, pa, ya), d, pa, ya, pb, yb))
+            events.append((strip(primary, pa, ya), d, pa, ya, pb, yb, is_forced))
     events.sort()
     last_seen = [-1.0] * n
-    for sp, d, pa, ya, pb, yb in events:
+    for sp, d, pa, ya, pb, yb, is_forced in events:
         sd = strip(d, pb, yb)
         if sd < last_seen[d]:
             continue   # âncora fora de ordem (não deveria acontecer)
         last_seen[d] = sd
-        take_manual(primary, sp, inclusive=False)
-        take_manual(d, sd, inclusive=False)
+        pass_manual(primary, sp, inclusive=False)
+        pass_manual(d, sd, inclusive=False)
         diff = (sp + shift[primary]) - (sd + shift[d])
-        if diff > TOLERANCE:              # o PDF d está "adiantado": espaço nele
-            add_auto(d, pb, yb, diff)
-        elif diff < -TOLERANCE:           # o PDF d tem conteúdo a mais: espaço no principal e nos demais
+        if is_forced:
+            accepted[d] = 0.0
+            need = diff
+        else:
+            need = diff - hold(d, diff)
+        if need > TOLERANCE:              # o PDF d está "adiantado": espaço nele
+            placed = request(d, pb, yb, need)
+            accepted[d] += max(need - placed, 0.0)
+        elif need < -TOLERANCE:           # o PDF d tem conteúdo a mais: espaço no principal e nos demais
             target = sp + shift[primary]
-            add_auto(primary, pa, ya, -diff)
-            for j in range(n):
-                if j in (primary, d):
-                    continue
-                pos = target - shift[j]
-                page, y = _locate(tops[j], page_heights[j], scales[j], pos)
-                take_manual(j, pos, inclusive=False)
-                add_auto(j, page, y, -diff)
+            placed = request(primary, pa, ya, -need)
+            accepted[d] -= max(-need - placed, 0.0)
+            moved = min(placed, -need)    # os outros acompanham o quanto o principal desceu
+            if moved > 0.5:
+                for j in range(n):
+                    if j in (primary, d):
+                        continue
+                    pos = target - shift[j]
+                    page, y = _locate(tops[j], page_heights[j], scales[j], pos)
+                    pass_manual(j, pos, inclusive=False)
+                    placed_j = request(j, page, y, moved)
+                    accepted[j] += max(moved - placed_j, 0.0)
         # um espaço manual no mesmo ponto do automático soma-se a ele (não é compensado aqui)
-        take_manual(primary, sp, inclusive=True)
-        take_manual(d, sd, inclusive=True)
+        pass_manual(primary, sp, inclusive=True)
+        pass_manual(d, sd, inclusive=True)
     return [_build(layouts[d], gaps[d]) for d in range(n)]
 
 
