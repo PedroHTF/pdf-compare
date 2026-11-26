@@ -1,5 +1,8 @@
 # Novidades / Changelog
 
+Cada versão tem um `### Resumo` (português) e um `### Summary` (inglês) curtos: eles viram o texto
+"O que mudou" / "What's new" da Release no GitHub (`tools/release_notes.py`). Os detalhes vêm depois.
+
 ## [Não lançado / Unreleased]
 
 ### Português
@@ -60,6 +63,28 @@
   the top, the previous one, showing its end). View › Scroll to the next page turns it on/off.
 
 ## [0.3.0] — 2026-11
+
+### Resumo
+
+- **Marcações completas:** além de destacar, agora dá para sublinhar, tachar, desenhar retângulos, círculos, setas e à mão livre, escrever caixas de texto e balões, e carimbar ("Aprovado", "Revisar"…). Tudo pode ser movido, redimensionado e desfeito (Ctrl+Z), e há uma lista com todas as marcações.
+- **Escolha a referência:** compare todos com qualquer um dos PDFs, ou cada versão com a anterior (em cadeia).
+- **Alinhar por conteúdo:** páginas incluídas ou removidas são detectadas, e as páginas iguais ficam lado a lado.
+- **Rolagem contínua:** veja as páginas em sequência; com o alinhamento ligado, aparecem espaços onde há texto a mais ou a menos, para os trechos iguais ficarem na mesma altura.
+- **Diferença visual (opcional):** encontra mudanças em imagens, assinaturas, carimbos e páginas escaneadas.
+- **Relatório de diferenças:** a lista de mudanças em PDF, HTML ou CSV (Excel).
+- **PDFs grandes:** a comparação é feita por partes, sem travar o programa, e o resultado fica salvo para a próxima vez.
+- **Configurações** (Ctrl+,) para idiomas, cores e estilo, e **aviso de nova versão** (pode ser desligado).
+
+### Summary
+
+- **Full markup tools:** underline, strikeout, shapes, arrows, pen, text boxes, callouts and stamps; move, resize, undo; marks list.
+- **Choose the reference** PDF or compare **in a chain** (each version with the previous one).
+- **Align by content:** added or removed pages are detected and matching pages sit side by side.
+- **Continuous scrolling** with alignment spaces that keep matching passages at the same height.
+- **Optional visual difference** for images, signatures, stamps and scanned pages.
+- **Difference report** as PDF, HTML or CSV.
+- **Large PDFs** are compared in batches in the background, with results cached.
+- **Settings** window and a **new-version notice** (can be turned off).
 
 ### Português
 
