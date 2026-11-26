@@ -15,7 +15,7 @@ def test_version_parsing_and_comparison():
     assert parse_version("0.4.0-beta") == (0, 4, 0) and parse_version("abc") == ()
     assert is_newer("0.3.1", "0.3.0") and is_newer("v1.0", "0.9.9") and is_newer("0.10.0", "0.9.0")
     assert not is_newer("0.3.0", "0.3.0") and not is_newer("0.3", "0.3.0") and not is_newer("x", "0.3.0")
-    assert __version__ == "0.3.0"
+    assert parse_version(__version__) >= (0, 4, 0)
 
 
 def test_parse_release_rules():
@@ -60,7 +60,7 @@ def test_due_once_a_day():
 
 
 # --- interface ---------------------------------------------------------------------------------
-NEW = ReleaseInfo("0.4.0", "https://github.com/PedroHTF/pdf-compare/releases/tag/v0.4.0", "Novidades da 0.4.0")
+NEW = ReleaseInfo("9.9.0", "https://github.com/PedroHTF/pdf-compare/releases/tag/v9.9.0", "Novidades da 9.9.0")
 
 
 def _check(w, qtbot, release, manual=False):
@@ -74,13 +74,13 @@ def test_new_version_shows_bar_and_skip(window, qtbot, monkeypatch):
     opened = []
     monkeypatch.setattr("PySide6.QtGui.QDesktopServices.openUrl", lambda url: opened.append(url.toString()))
     _check(w, qtbot, NEW)
-    assert w.update_bar.isVisibleTo(w) and "0.4.0" in w.update_label.text()
+    assert w.update_bar.isVisibleTo(w) and "9.9.0" in w.update_label.text()
     assert float(w.settings.value("updates/last_check")) > 0
     w.update_download_btn.click()
     assert opened == [NEW.url]
 
     w.update_skip_btn.click()
-    assert not w.update_bar.isVisibleTo(w) and w.settings.value("updates/skip") == "0.4.0"
+    assert not w.update_bar.isVisibleTo(w) and w.settings.value("updates/skip") == "9.9.0"
     _check(w, qtbot, NEW)                                       # automático: versão ignorada não aparece
     assert not w.update_bar.isVisibleTo(w)
 

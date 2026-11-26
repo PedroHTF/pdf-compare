@@ -205,7 +205,7 @@ copy the whole `dist\PDFCompare` folder.
 With [Inno Setup 6](https://jrsoftware.org/isinfo.php) installed, after `build.ps1`:
 
 ```bash
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=0.3.0 installer.iss
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=0.4.0 installer.iss
 ```
 
 The installer goes to `dist\installer\`.
@@ -220,8 +220,8 @@ portable package and source code. To release:
    Release's "What's new", together with the download steps in `.github/release-template.md`. Merge into `main`.
 2. Create and push the tag with the same number:
    ```bash
-   git tag v0.3.0
-   git push origin v0.3.0
+   git tag v0.4.0
+   git push origin v0.4.0
    ```
 3. A few minutes later the Release appears under **Releases** with the files to download.
    If the tag does not match `__version__`, the workflow stops with an error.

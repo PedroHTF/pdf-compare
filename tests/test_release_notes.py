@@ -53,7 +53,8 @@ def test_real_changelog_has_summaries_for_current_version(tmp_path):
     assert main(["release_notes", f"v{__version__}", str(out)]) == 0
     text = out.read_text(encoding="utf-8")
     assert f"PDFCompare-Setup-{__version__}.exe" in text and "{" not in text
-    assert "## O que mudou" in text and "## What's new" in text and "Marcações completas" in text
+    assert "## O que mudou" in text and "## What's new" in text
+    assert subsection(section, "Resumo").splitlines()[0] in text
 
 
 def test_runs_on_a_windows_console_encoding(tmp_path, monkeypatch):

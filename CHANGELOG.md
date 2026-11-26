@@ -3,7 +3,23 @@
 Cada versão tem um `### Resumo` (português) e um `### Summary` (inglês) curtos: eles viram o texto
 "O que mudou" / "What's new" da Release no GitHub (`tools/release_notes.py`). Os detalhes vêm depois.
 
-## [Não lançado / Unreleased]
+## [0.4.0] — 2026-11
+
+### Resumo
+
+- **Alinhamento corrigido e com mais controle:** remover um espaço agora o remove de fato; espaços podem ser **travados** (o alinhamento automático não os muda nem recria); e **Alinhar seleções** (Ctrl+Shift+A) força dois trechos escolhidos por você a ficarem lado a lado.
+- **Escolha o que comparar:** cabeçalho, rodapé e laterais podem ficar de fora. O cabeçalho e o rodapé são detectados ao abrir os PDFs, e as linhas se ajustam arrastando na própria página. Páginas inteiras (capa, índice) também podem ser ignoradas.
+- **A comparação segue o seu alinhamento:** trechos e páginas que você alinhou à mão são comparados entre si.
+- **Comparar só a página atual:** pelo menu ▾ do botão Comparar texto; acompanha quando você muda de página.
+- **Uma página por vez:** a roda do mouse passa para a página seguinte ao chegar ao fim (quantos dentes, nas Configurações).
+
+### Summary
+
+- **Alignment fixed and more control:** removing a space really removes it; spaces can be **locked**; **Align selections** (Ctrl+Shift+A) lines up two passages you choose.
+- **Choose what to compare:** leave out header, footer and sides (header/footer detected automatically, lines draggable on the page) and whole pages such as covers or contents.
+- **The comparison follows your manual alignment.**
+- **Compare only the current page**, following as you navigate.
+- **One page at a time:** the mouse wheel turns to the next page at the end (number of notches in Settings).
 
 ### Português
 
