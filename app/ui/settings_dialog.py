@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from app.i18n import LANGUAGES, tr
 from app.services.annotations import Color
+from app.services.compare_scope import MAX_ZONE
 from app.services.preferences import (
     DEFAULT_COMPARE,
     DEFAULT_DIFF_COLORS,
@@ -107,6 +108,34 @@ class SettingsDialog(QDialog):
         page = QWidget()
         layout = QVBoxLayout(page)
         c = values.compare
+        self._page_only = c.page_only
+
+        scope = QGroupBox(tr("O que comparar"))
+        form = QFormLayout(scope)
+        self.header_spin = QSpinBox()
+        self.footer_spin = QSpinBox()
+        for spin, value in ((self.header_spin, c.header), (self.footer_spin, c.footer)):
+            spin.setRange(0, MAX_ZONE)
+            spin.setSpecialValueText(tr("Comparar"))
+            spin.setSuffix(tr(" % da página"))
+            spin.setValue(value)
+        self.header_spin.setToolTip(tr("Ignora o texto no topo de cada página (cabeçalho), na comparação, "
+                                       "no relatório e no alinhamento por conteúdo"))
+        self.footer_spin.setToolTip(tr("Ignora o texto na base de cada página (rodapé), na comparação, "
+                                       "no relatório e no alinhamento por conteúdo"))
+        form.addRow(tr("Ignorar cabeçalho"), self.header_spin)
+        form.addRow(tr("Ignorar rodapé"), self.footer_spin)
+        self.follow_check = QCheckBox(tr("Seguir o alinhamento feito à mão (trechos e páginas alinhados)"))
+        self.follow_check.setChecked(c.follow_alignment)
+        self.follow_check.setToolTip(tr("Com o alinhamento por conteúdo ligado, cada trecho é comparado com o "
+                                        "trecho que você alinhou a ele"))
+        form.addRow("", self.follow_check)
+        note = QLabel(tr("Páginas inteiras (ex.: índice) podem ser ignoradas pelo botão direito na página ou em "
+                         "Ferramentas › Páginas ignoradas na comparação."))
+        note.setObjectName("muted")
+        note.setWordWrap(True)
+        form.addRow(note)
+        layout.addWidget(scope)
 
         batches = QGroupBox(tr("Comparação em lotes"))
         form = QFormLayout(batches)
@@ -269,5 +298,7 @@ class SettingsDialog(QDialog):
                 lookahead=self.lookahead_combo.currentData(), pause_while_busy=self.pause_check.isChecked(),
                 cache_days=self.cache_days_spin.value(), realign_mode=self.realign_combo.currentData(),
                 visual_sensitivity=self.visual_spin.value(),
+                header=self.header_spin.value(), footer=self.footer_spin.value(),
+                follow_alignment=self.follow_check.isChecked(), page_only=self._page_only,
             ),
         )

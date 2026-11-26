@@ -51,6 +51,10 @@ Na primeira execução o Windows SmartScreen pode avisar que o programa não é 
 | Ajustar o alinhamento na rolagem contínua | Arraste a alça embaixo de um espaço; botão direito › **Inserir espaço aqui**, **Remover este espaço** ou **Alinhar este trecho com…** (e clique no trecho correspondente em outro PDF) |
 | Impedir que o alinhamento automático mude um espaço | Botão direito › **Travar este espaço** ou **Remover e travar este espaço**; **Navegar › Destravar todos os espaços** desfaz |
 | Forçar o alinhamento de trechos escolhidos | **Alinhar seleções** (Ctrl+Shift+A): arraste sobre um trecho em um PDF e depois sobre o correspondente em outro |
+| Deixar cabeçalho/rodapé fora da comparação | **Configurações › Comparação › Ignorar cabeçalho / rodapé** (% da altura da página) |
+| Deixar páginas fora da comparação (capa, índice) | Botão direito na página › **Ignorar esta página na comparação**, ou **Ferramentas › Páginas ignoradas na comparação…** |
+| Comparar só a página à vista | ▾ do botão **Comparar texto** › **Comparar só a página atual** |
+| Passar de página rolando (uma página por vez) | Role além do fim da página; **Exibir › Rolar para a próxima página** liga/desliga |
 | Comparar PDFs grandes por partes | A comparação é feita em lotes de páginas (padrão: 50). **Comparar próximo lote ▶** (F8) na barra de status; Shift+F8 volta |
 | Destacar, sublinhar ou tachar um trecho | Escolha a ferramenta na **barra de marcação** (Destacar: Ctrl+H) e arraste sobre o texto |
 | Desenhar retângulo, elipse, linha, seta ou à mão livre | Escolha a ferramenta e arraste na página |

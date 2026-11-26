@@ -6,6 +6,8 @@ from __future__ import annotations
 from app.i18n import LANGUAGES, language, tr
 
 import os
+
+import fitz
 from pathlib import Path
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -53,6 +55,13 @@ from app.services.annotations import (
     words_in_rect,
 )
 from app.services.batch_runner import BatchRunner
+from app.services.compare_scope import (
+    IgnoredPagesStore,
+    format_pages,
+    page_geometry,
+    parse_pages,
+    scoped_index,
+)
 from app.services.content_align import (
     AlignmentStore,
     PairMatch,
@@ -67,7 +76,7 @@ from app.services.report import PairReport, make_report, write_report
 from app.services.strip_layout import StripLayout, compute_layouts
 from app.services.updates import ReleaseInfo, due, fetch_latest, is_newer
 from app.services.visual_diff import VISUAL, page_difference
-from app.services.diff_batches import ALL_PAGES, DiffCache, batch_for_page, format_size, plan_batches_from_rows
+from app.services.diff_batches import ALL_PAGES, Batch, DiffCache, batch_for_page, format_size, plan_batches_from_rows
 from app.services.preferences import (
     LOOKAHEAD_ALL,
     NEXT_AUTO,
@@ -190,6 +199,10 @@ class MainWindow(QMainWindow):
         self._jump_to_first_diff = False
         self.align_store = AlignmentStore(self.data_dir / "alinhamentos")
         self._matches: Dict[tuple, PairMatch] = {}   # comparação de linhas por par de PDFs (em memória)
+        self.ignored_pages = IgnoredPagesStore(self.data_dir / "paginas_ignoradas.json")
+        self._scoped: Dict[tuple, object] = {}       # índices sem cabeçalho/rodapé/páginas ignoradas
+        self._geometry: Dict[int, list] = {}         # geometria das páginas por PDF (uid)
+        self._page_only_pages: Optional[tuple] = None   # páginas comparadas em "só a página atual"
         self._align_version = 0                     # muda a cada ajuste manual (espaços, trechos)
         self._layouts_key: Optional[tuple] = None
         self._layouts: List[StripLayout] = []
@@ -318,6 +331,22 @@ class MainWindow(QMainWindow):
         self.act_diff = self._action(tr("Comparar &texto"), self.toggle_diff, ["Ctrl+D"],
                                      tr("Destacar as diferenças de texto em relação à referência"),
                                      checkable=True)
+        self.act_diff_whole = self._action(tr("Comparar o documento inteiro"), lambda: self.set_page_only(False),
+                                           [], tr("Comparar todas as páginas (em lotes, conforme as Configurações)"),
+                                           checkable=True)
+        self.act_diff_page = self._action(tr("Comparar só a página atual"), lambda: self.set_page_only(True),
+                                          [], tr("Comparar apenas as páginas à vista; a comparação acompanha "
+                                                 "quando você muda de página"), checkable=True)
+        from PySide6.QtGui import QActionGroup
+
+        self._diff_scope_group = QActionGroup(self)
+        for action in (self.act_diff_whole, self.act_diff_page):
+            self._diff_scope_group.addAction(action)
+        self.act_diff_page.setChecked(self.compare.page_only)
+        self.act_diff_whole.setChecked(not self.compare.page_only)
+        self.act_ignore_pages = self._action(tr("Páginas &ignoradas na comparação…"), self.edit_ignored_pages, [],
+                                             tr("Escolher páginas de cada PDF que ficam fora da comparação "
+                                                "(ex.: capa, índice)"))
         self.act_visual_diff = self._action(
             tr("Diferença &visual"), self.toggle_visual_diff, ["Ctrl+Shift+V"],
             tr("Destacar áreas com aparência diferente, pixel a pixel (imagens, assinaturas, carimbos, "
@@ -400,6 +429,11 @@ class MainWindow(QMainWindow):
             tr("Mostrar todas as páginas em sequência, em vez de uma de cada vez"), checkable=True)
         self.act_continuous.setIconText(tr("Contínua"))
         self.act_continuous.setChecked(self._bool_setting("view/continuous", False))
+        self.act_wheel_flip = self._action(
+            tr("Rolar para a &próxima página"), self._save_wheel_flip, [],
+            tr("Uma página por vez: rolar além do fim da página abre a seguinte (e além do início, a anterior)"),
+            checkable=True)
+        self.act_wheel_flip.setChecked(self._bool_setting("view/wheel_flip", True))
 
         self.act_shortcuts = self._action(tr("&Atalhos de teclado"), self.show_shortcuts, ["F1"])
         self.act_license = self._action(tr("&Licença e créditos…"), self.show_license,
@@ -450,6 +484,7 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         m.addAction(self.act_linked_scroll)
         m.addAction(self.act_continuous)
+        m.addAction(self.act_wheel_flip)
         self.view_menu = m
 
         m = bar.addMenu(tr("&Ferramentas"))
@@ -460,6 +495,9 @@ class MainWindow(QMainWindow):
         marks.addAction(self.act_stamp)
         m.addSeparator()
         m.addAction(self.act_diff)
+        self.diff_scope_menu = m.addMenu(tr("Abrangência da &comparação"))
+        self.diff_scope_menu.addActions([self.act_diff_whole, self.act_diff_page])
+        m.addAction(self.act_ignore_pages)
         m.addAction(self.act_visual_diff)
         self.reference_menu = m.addMenu(tr("&Referência da comparação"))
         self.reference_menu.aboutToShow.connect(self._fill_reference_menu)
@@ -515,6 +553,12 @@ class MainWindow(QMainWindow):
         tb.addAction(self.act_continuous)
         tb.addSeparator()
         tb.addAction(self.act_diff)
+        from PySide6.QtWidgets import QToolButton
+
+        diff_button = tb.widgetForAction(self.act_diff)
+        if isinstance(diff_button, QToolButton):   # ▾ ao lado: documento inteiro / só a página atual
+            diff_button.setMenu(self.diff_scope_menu)
+            diff_button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         tb.addAction(self.act_visual_diff)
         tb.addSeparator()
         tb.addAction(self.act_export)
@@ -858,6 +902,9 @@ class MainWindow(QMainWindow):
             pane.point_picked.connect(self._on_point_picked)
             pane.region_picked.connect(self._on_region_picked)
             pane.relayout_requested.connect(self._on_relayout)
+            pane.page_flip.connect(self._on_page_flip)
+            pane.scope_provider = lambda page, i=i: self.scope_marks(i, page)
+            pane.wheel_flip = self.act_wheel_flip.isChecked()
             pane.set_view_mode(self.act_continuous.isChecked())
             pane.mark_style = self.mark_style
             pane.scroll.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
@@ -969,6 +1016,10 @@ class MainWindow(QMainWindow):
 
     def refresh(self) -> None:
         active = bool(self._query)
+        if (self.act_diff.isChecked() and self.compare.page_only and len(self.sessions) >= 2
+                and self._shown_pages() != self._page_only_pages):
+            self.update_diff()        # mudou de página: compara as novas (update_diff chama refresh)
+            return
         if self.act_diff.isChecked() and self.runner.batches:
             self._ensure_batches()
         if self.act_continuous.isChecked() and self.panes:
@@ -1937,6 +1988,11 @@ class MainWindow(QMainWindow):
             self._realign_pending = False
         if compare.next_mode != NEXT_AUTO and old.next_mode == NEXT_AUTO:
             self.runner.cancel_background()
+        self.act_diff_page.setChecked(compare.page_only)
+        self.act_diff_whole.setChecked(not compare.page_only)
+        if compare.scope != old.scope:
+            self._after_scope_change()
+            return
         if self.act_diff.isChecked():
             self.update_diff()
 
@@ -1961,7 +2017,9 @@ class MainWindow(QMainWindow):
         offsets = self._alignment_key()
         return (tuple(s.uid for s in self.sessions), tuple(id(i) for i in indexes),
                 self.compare.batch_size, offsets, self.indexer.ocr_enabled, self.indexer.ocr_language,
-                self.chain_mode, self.reference_index())
+                self.chain_mode, self.reference_index(), self.compare.scope.key(),
+                tuple(self._ignored(i) for i in range(len(self.sessions))), repr(self._sync_points()),
+                self._shown_pages() if self.compare.page_only else None)
 
     def update_diff(self) -> None:
         """(Re)planeja a comparação em lotes e pede os lotes necessários."""
@@ -1975,8 +2033,8 @@ class MainWindow(QMainWindow):
             self.batch_bar.hide()
             self.refresh()
             return
-        indexes = [self.indexer.index_for(s) for s in self.sessions]
-        keys = [self.annotation_key(i) for i in range(len(self.sessions))]
+        indexes = [self.compare_index(i) for i in range(len(self.sessions))]
+        keys = [self._compare_fingerprint(i) for i in range(len(self.sessions))]
         if any(i is None for i in indexes) or any(k is None for k in keys):
             self.nav.clear_diffs()
             self._update_batch_status()
@@ -1991,12 +2049,20 @@ class MainWindow(QMainWindow):
             ref_offset = self.sessions[primary].offset
             offsets = [ref_offset - s.offset for s in self.sessions]   # página do PDF i = página da principal + isto
             options = f"ocr={int(self.indexer.ocr_enabled)}:{self.indexer.ocr_language}"
+            if self.compare.scope.active:
+                options += ":" + self.compare.scope.key()
             plan = None
-            if self.nav.by_rows:
+            self._page_only_pages = None
+            if self.compare.page_only:
+                self._page_only_pages = self._shown_pages()
+                plan = [Batch(0, tuple((p, p + 1) if p is not None else (0, 0) for p in self._page_only_pages),
+                              primary)]
+            elif self.nav.by_rows:
                 plan = plan_batches_from_rows(self.nav.rows, [s.page_count for s in self.sessions],
                                               self.compare.batch_size, primary)
             self.runner.configure(indexes, keys, offsets, self.compare.batch_size, options,
-                                  pairs=self.comparison_pairs(), primary=primary, batches=plan)
+                                  pairs=self.comparison_pairs(), primary=primary, batches=plan,
+                                  sync=self._sync_points())
             self._batch_signature = signature
             self.nav.clear_diffs()
             if self.compare.next_mode != NEXT_AUTO and self.runner.batches:
@@ -2190,15 +2256,223 @@ class MainWindow(QMainWindow):
         ref = self.reference_index()
         if self.nav.total_diffs == 0:
             if self.chain_mode:
-                return tr("Texto idêntico em todos os PDFs")
-            return tr("Texto idêntico ao da referência ({name})", name=self.sessions[ref].name)
+                return tr("Texto idêntico em todos os PDFs") + self._scope_suffix()
+            return tr("Texto idêntico ao da referência ({name})", name=self.sessions[ref].name) + self._scope_suffix()
         parts = []
         for a, b in self.comparison_pairs():
             c = count_by_kind(self.nav.diffs[b])
             parts.append(f"{self.sessions[b].name}: +{c[ADDED]} −{c[REMOVED]} ~{c[CHANGED]}")
         if self.chain_mode:
-            return tr("Em cadeia (cada PDF com o anterior) — {parts}", parts=" · ".join(parts))
-        return tr("Diferenças em relação a {name} — {parts}", name=self.sessions[ref].name, parts=" · ".join(parts))
+            text = tr("Em cadeia (cada PDF com o anterior) — {parts}", parts=" · ".join(parts))
+        else:
+            text = tr("Diferenças em relação a {name} — {parts}", name=self.sessions[ref].name, parts=" · ".join(parts))
+        return text + self._scope_suffix()
+
+    # --- o que entra na comparação -------------------------------------------------------
+    def _ignored(self, index: int) -> frozenset:
+        return self.ignored_pages.pages(self.annotation_key(index))
+
+    def _geometry_for(self, index: int) -> list:
+        session = self.sessions[index]
+        if session.uid not in self._geometry and session.doc is not None:
+            self._geometry[session.uid] = page_geometry(session.doc)
+        return self._geometry.get(session.uid, [])
+
+    def compare_index(self, index: int):
+        """Texto do PDF como a comparação e o alinhamento o veem (sem o que o usuário ignorou)."""
+        session = self.sessions[index]
+        base = self.indexer.index_for(session)
+        scope, ignored = self.compare.scope, self._ignored(index)
+        if base is None or (not scope.active and not ignored):
+            return base
+        key = (session.uid, id(base), scope, ignored)
+        if key not in self._scoped:
+            if len(self._scoped) > 40:
+                self._scoped.clear()
+            geometry = self._geometry_for(index) if scope.active else []
+            self._scoped[key] = scoped_index(base, scope, geometry, ignored)
+        return self._scoped[key]
+
+    def _compare_fingerprint(self, index: int) -> Optional[str]:
+        """Identifica o PDF no cache da comparação (muda se mudam as páginas ignoradas)."""
+        key = self.annotation_key(index)
+        ignored = self._ignored(index)
+        return f"{key}|ign={format_pages(ignored)}" if key and ignored else key
+
+    def _sync_points(self) -> Dict[Tuple[int, int], list]:
+        """Pontos alinhados à mão que a comparação segue: trechos, linhas e páginas fixadas."""
+        if not self.compare.follow_alignment or self.chain_mode or not self.act_content_align.isChecked():
+            return {}
+        primary = self.reference_index()
+        out = {}
+        for j in range(len(self.sessions)):
+            key = self._gap_key(j) if j != primary else None
+            if not key:
+                continue
+            points = list(self.align_store.forced_anchors(key))
+            points += [(pa, 0.0, pb, 0.0) for pa, pb in self.align_store.manual_pages(key)]
+            if points:
+                out[(primary, j)] = sorted(set(points))
+        return out
+
+    def _shown_pages(self) -> tuple:
+        return tuple(self.nav.page_for(i) for i in range(len(self.sessions)))
+
+    def _scope_suffix(self) -> str:
+        parts = []
+        if self.compare.page_only:
+            parts.append(tr("só a página atual"))
+        scope = self.compare.scope
+        if scope.header and scope.footer:
+            parts.append(tr("sem cabeçalho e rodapé"))
+        elif scope.header:
+            parts.append(tr("sem cabeçalho"))
+        elif scope.footer:
+            parts.append(tr("sem rodapé"))
+        ignored = sum(len(self._ignored(i)) for i in range(len(self.sessions)))
+        if ignored:
+            parts.append(_plural(ignored, "{n} página ignorada", "{n} páginas ignoradas"))
+        return "".join(" · " + p for p in parts)
+
+    def _in_scope(self, index: int, page: int, rect) -> bool:
+        scope = self.compare.scope
+        if not scope.active:
+            return True
+        geometry = self._geometry_for(index)
+        if page >= len(geometry):
+            return True
+        matrix, height = geometry[page]
+        top, bottom = scope.band(height)
+        x0, y0, x1, y1 = rect
+        y = (fitz.Point((x0 + x1) / 2, (y0 + y1) / 2) * fitz.Matrix(*matrix)).y
+        return top <= y <= bottom
+
+    def scope_marks(self, index: int, page: int):
+        """O que desenhar como "fora da comparação" na página: (ignorada, % cabeçalho, % rodapé) ou None."""
+        if len(self.sessions) < 2 or not (self.act_diff.isChecked() or self.act_visual_diff.isChecked()
+                                          or self.act_content_align.isChecked()):
+            return None
+        ignored = index < len(self.sessions) and page in self._ignored(index)
+        scope = self.compare.scope
+        if not ignored and not scope.active:
+            return None
+        return (ignored, scope.header, scope.footer)
+
+    def _after_scope_change(self, message: str = "") -> None:
+        """Mudou o que entra na comparação: refaz o alinhamento, a comparação e o desenho."""
+        self._align_version += 1
+        self._layouts_key = None
+        self._batch_signature = None
+        for pane in self.panes:
+            pane.invalidate()
+            pane.canvas.invalidate()
+        self.update_alignment()
+        if self.act_diff.isChecked():
+            self.update_diff()
+        else:
+            self.refresh()
+        if message:
+            self.statusBar().showMessage(message, 5000)
+
+    def toggle_ignored_page(self, index: int, page: int) -> None:
+        key = self.annotation_key(index)
+        if not key:
+            return
+        now = self.ignored_pages.toggle(key, page)
+        self._after_scope_change(
+            tr("Página {page} de {name} ignorada na comparação.", page=page + 1, name=self.sessions[index].name)
+            if now else tr("Página {page} de {name} voltou a ser comparada.", page=page + 1,
+                           name=self.sessions[index].name))
+
+    def edit_ignored_pages(self) -> None:
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFormLayout
+
+        if not self.sessions:
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("Páginas ignoradas na comparação"))
+        form = QFormLayout(dialog)
+        intro = QLabel(tr("Páginas de cada PDF que ficam fora da comparação de texto, do relatório e do "
+                          "alinhamento por conteúdo (ex.: capa, índice). Exemplo: 1-3, 7"))
+        intro.setWordWrap(True)
+        form.addRow(intro)
+        edits = []
+        for i, session in enumerate(self.sessions):
+            edit = QLineEdit(format_pages(self._ignored(i)))
+            edit.setPlaceholderText(tr("nenhuma"))
+            edit.setEnabled(bool(self.annotation_key(i)))
+            form.addRow(tr("{name} ({n} págs.)", name=session.name, n=session.page_count), edit)
+            edits.append(edit)
+        error = QLabel()
+        error.setObjectName("error")
+        error.setStyleSheet("color: #c0392b")
+        form.addRow(error)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        form.addRow(buttons)
+        parsed: Dict[int, set] = {}
+
+        def accept() -> None:
+            parsed.clear()
+            for i, edit in enumerate(edits):
+                try:
+                    parsed[i] = parse_pages(edit.text(), self.sessions[i].page_count)
+                except ValueError as exc:
+                    error.setText(tr("Páginas inválidas em {name}: “{part}”", name=self.sessions[i].name,
+                                     part=str(exc)))
+                    edit.setFocus()
+                    return
+            dialog.accept()
+
+        buttons.accepted.connect(accept)
+        buttons.rejected.connect(dialog.reject)
+        self._ignored_dialog = dialog          # (testes)
+        self._ignored_edits = edits
+        if not dialog.exec():
+            return
+        changed = False
+        for i, pages in parsed.items():
+            key = self.annotation_key(i)
+            if key and frozenset(pages) != self._ignored(i):
+                self.ignored_pages.set_pages(key, pages)
+                changed = True
+        if changed:
+            self._after_scope_change(tr("Páginas ignoradas atualizadas."))
+
+    def set_page_only(self, on: bool) -> None:
+        if on == self.compare.page_only:
+            return
+        from dataclasses import replace
+
+        self.compare = replace(self.compare, page_only=on)
+        self.prefs.set_compare_settings(self.compare)
+        self.act_diff_page.setChecked(on)
+        self.act_diff_whole.setChecked(not on)
+        self._batch_signature = None
+        if not self.act_diff.isChecked() and len(self.sessions) >= 2:
+            self.act_diff.setChecked(True)      # escolher a abrangência já liga a comparação
+            self.toggle_diff()
+        else:
+            self.update_diff()
+        self.statusBar().showMessage(tr("Comparando só a página atual: a comparação acompanha a navegação.")
+                                     if on else tr("Comparando o documento inteiro."), 5000)
+
+    # --- uma página por vez: rolar para a próxima ------------------------------------------
+    def _save_wheel_flip(self) -> None:
+        on = self.act_wheel_flip.isChecked()
+        self.settings.setValue("view/wheel_flip", on)
+        for pane in self.panes:
+            pane.wheel_flip = on
+
+    def _on_page_flip(self, index: int, delta: int) -> None:
+        """Rolou além da borda da página: vai para a seguinte (todos juntos, se a rolagem é vinculada)."""
+        linked = self.act_linked_scroll.isChecked()
+        for pane in self.panes:
+            if linked or pane.index == index:
+                pane.land_at_bottom = delta < 0
+        if linked:
+            self.step(delta)
+        else:
+            self._on_pane_step(index, delta)
 
     # --- alinhamento por conteúdo -------------------------------------------------------
     def _align_key(self, a: int, b: int) -> Optional[str]:
@@ -2211,10 +2485,11 @@ class MainWindow(QMainWindow):
                    if (k := self._align_key(primary, j)))
 
     def _pair_match(self, a: int, b: int) -> Optional[PairMatch]:
-        ia, ib = self.indexer.index_for(self.sessions[a]), self.indexer.index_for(self.sessions[b])
+        ia, ib = self.compare_index(a), self.compare_index(b)
         if ia is None or ib is None or not ia.complete or not ib.complete:
             return None
-        key = (self.annotation_key(a), self.annotation_key(b), self.indexer.ocr_enabled, self.indexer.ocr_language)
+        key = (self._compare_fingerprint(a), self._compare_fingerprint(b), self.indexer.ocr_enabled,
+               self.indexer.ocr_language, self.compare.scope.key())
         if key not in self._matches:
             if len(self._matches) > 30:
                 self._matches.clear()
@@ -2677,6 +2952,8 @@ class MainWindow(QMainWindow):
         """Áreas da diferença visual na página `page` do PDF `index` (comparada com o par dela)."""
         if not self.act_visual_diff.isChecked() or page is None or len(self.sessions) < 2:
             return []
+        if page in self._ignored(index):
+            return []
         out: List[DiffMark] = []
         for a, b in self.comparison_pairs():
             if index not in (a, b):
@@ -2688,7 +2965,7 @@ class MainWindow(QMainWindow):
             pa, pb = (page, partner) if index == a else (partner, page)
             boxes = self._visual_pair(a, pa, b, pb)
             mine = boxes[0] if index == a else boxes[1]
-            out += [DiffMark(page, (rect,), VISUAL) for rect in mine]
+            out += [DiffMark(page, (rect,), VISUAL) for rect in mine if self._in_scope(index, page, rect)]
         return out
 
     def _visual_pair(self, a: int, page_a: int, b: int, page_b: int) -> tuple:
@@ -2746,8 +3023,9 @@ class MainWindow(QMainWindow):
 
         pairs = []
         for a, b in self.comparison_pairs():
-            ia, ib = self.indexer.index_for(self.sessions[a]), self.indexer.index_for(self.sessions[b])
-            pairs.append(PairReport(self.sessions[a].name, self.sessions[b].name, report_entries(ia, ib)))
+            ia, ib = self.compare_index(a), self.compare_index(b)
+            pairs.append(PairReport(self.sessions[a].name, self.sessions[b].name,
+                                    report_entries(ia, ib, sync=self._sync_points().get((a, b)))))
         if self.chain_mode:
             mode = tr("Em cadeia (cada PDF com o anterior)")
         else:
@@ -2877,6 +3155,13 @@ class MainWindow(QMainWindow):
                 undo_block = menu.addAction(tr("Desfazer o alinhamento deste trecho"))
                 gap_actions[undo_block] = lambda: self.remove_block(block)
             menu.addSeparator()
+        ignore = None
+        if page is not None and self.annotation_key(index):
+            ignored = page in self._ignored(index)
+            ignore = menu.addAction(tr("Voltar a comparar esta página") if ignored
+                                    else tr("Ignorar esta página na comparação"))
+            menu.addAction(self.act_ignore_pages)
+            menu.addSeparator()
         use = menu.addAction(tr("Usar como referência da comparação"))
         use.setEnabled(self.chain_mode or index != self.reference_index())
         chain = menu.addAction(tr("Comparar em cadeia (cada PDF com o anterior)"))
@@ -2886,6 +3171,9 @@ class MainWindow(QMainWindow):
         chosen = menu.exec(global_pos)
         if chosen in gap_actions:
             gap_actions[chosen]()
+            return
+        if ignore is not None and chosen is ignore:
+            self.toggle_ignored_page(index, page)
             return
         if chosen is use:
             self.set_reference(index)

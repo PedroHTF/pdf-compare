@@ -7,6 +7,11 @@ O primeiro PDF aberto é a referência. Cada um dos outros é comparado com ele:
 Para ser rápido em documentos longos, a comparação é feita em dois níveis:
 primeiro por linhas e, nos trechos de linhas diferentes, palavra por palavra.
 Mudanças de quebra de linha ou de página não aparecem como diferença.
+
+Pontos de sincronização (`sync`): pares (página a, y a, página b, y b) que o
+usuário alinhou à mão (trechos, linhas, páginas fixadas). Com eles, o texto é
+dividido nesses pontos e cada pedaço do a é comparado só com o pedaço
+correspondente do b — a comparação segue o alinhamento do usuário.
 """
 
 from __future__ import annotations
@@ -80,6 +85,50 @@ def _marks(words: Sequence[_Word], start: int, end: int, kind: str) -> List[Diff
     return marks
 
 
+SyncPoint = Tuple[int, float, int, float]   # (página a, y a, página b, y b)
+
+
+def _line_at(words: Sequence[_Word], lines: Sequence[Tuple[int, int]], page: int, y: float) -> int:
+    """Primeira linha que começa no ponto (página, y) ou depois dele."""
+    for k, (start, _) in enumerate(lines):
+        w = words[start]
+        top = w.rects[0][1] if w.rects else 0.0
+        if (w.page, top) >= (page, y - 0.5):
+            return k
+    return len(lines)
+
+
+def _segments(wa, la, wb, lb, sync: Optional[Sequence[SyncPoint]]) -> List[Tuple[int, int, int, int]]:
+    """Pedaços (linhas [i0, i1) do a, [j0, j1) do b) comparados separadamente."""
+    cuts: List[Tuple[int, int]] = []
+    last = (0, 0)
+    for pa, ya, pb, yb in sorted(sync or ()):
+        i, j = _line_at(wa, la, pa, ya), _line_at(wb, lb, pb, yb)
+        if i < last[0] or j < last[1] or (i, j) == last:
+            continue   # fora de ordem (ou repetido): ignora
+        cuts.append((i, j))
+        last = (i, j)
+    bounds = [(0, 0)] + cuts + [(len(la), len(lb))]
+    return [(i0, i1, j0, j1) for (i0, j0), (i1, j1) in zip(bounds, bounds[1:])]
+
+
+def _changed_ranges(wa, la, wb, lb, sync: Optional[Sequence[SyncPoint]] = None):
+    """Trechos de palavras diferentes (a0, a1, b0, b1), comparando linha por linha."""
+    keys_a = [" ".join(w.text for w in wa[s:e]) for s, e in la]
+    keys_b = [" ".join(w.text for w in wb[s:e]) for s, e in lb]
+    for i0, i1, j0, j1 in _segments(wa, la, wb, lb, sync):
+        matcher = SequenceMatcher(None, keys_a[i0:i1], keys_b[j0:j1], autojunk=False)
+        for tag, x1, x2, y1, y2 in matcher.get_opcodes():
+            if tag == "equal":
+                continue
+            x1, x2, y1, y2 = x1 + i0, x2 + i0, y1 + j0, y2 + j0
+            a0 = la[x1][0] if x1 < len(la) else len(wa)
+            a1 = la[x2 - 1][1] if x1 < x2 else a0
+            b0 = lb[y1][0] if y1 < len(lb) else len(wb)
+            b1 = lb[y2 - 1][1] if y1 < y2 else b0
+            yield a0, a1, b0, b1
+
+
 def diff_pair(
     ref: DocumentIndex,
     other: DocumentIndex,
@@ -87,25 +136,18 @@ def diff_pair(
     ignore_accents: bool = False,
     ref_pages: Optional[PageRange] = None,
     other_pages: Optional[PageRange] = None,
+    sync: Optional[Sequence[SyncPoint]] = None,
 ) -> Tuple[List[DiffMark], List[DiffMark]]:
     """Diferenças entre dois documentos: (marcas na referência, marcas no outro).
 
     Com `ref_pages` / `other_pages`, compara só esses intervalos (comparação em lotes).
+    Com `sync`, compara separadamente os pedaços entre os pontos alinhados pelo usuário.
     """
     wa, la = _words(ref, case_sensitive, ignore_accents, ref_pages)
     wb, lb = _words(other, case_sensitive, ignore_accents, other_pages)
-    keys_a = [" ".join(w.text for w in wa[s:e]) for s, e in la]
-    keys_b = [" ".join(w.text for w in wb[s:e]) for s, e in lb]
-
     marks_a: List[DiffMark] = []
     marks_b: List[DiffMark] = []
-    for tag, i1, i2, j1, j2 in SequenceMatcher(None, keys_a, keys_b, autojunk=False).get_opcodes():
-        if tag == "equal":
-            continue
-        a0 = la[i1][0] if i1 < i2 else (la[i1][0] if i1 < len(la) else len(wa))
-        a1 = la[i2 - 1][1] if i1 < i2 else a0
-        b0 = lb[j1][0] if j1 < j2 else (lb[j1][0] if j1 < len(lb) else len(wb))
-        b1 = lb[j2 - 1][1] if j1 < j2 else b0
+    for a0, a1, b0, b1 in _changed_ranges(wa, la, wb, lb, sync):
         _diff_words(wa, a0, a1, wb, b0, b1, marks_a, marks_b)
     return marks_a, marks_b
 
@@ -209,20 +251,12 @@ def _page_at(words: Sequence[_Word], start: int, end: int) -> Optional[int]:
 
 
 def report_entries(ref: DocumentIndex, other: DocumentIndex, case_sensitive: bool = True,
-                   ignore_accents: bool = False) -> List[ReportEntry]:
+                   ignore_accents: bool = False, sync: Optional[Sequence[SyncPoint]] = None) -> List[ReportEntry]:
     """Lista legível das mudanças entre dois documentos inteiros (mesmo método de diff_pair)."""
     wa, la = _words(ref, case_sensitive, ignore_accents)
     wb, lb = _words(other, case_sensitive, ignore_accents)
-    keys_a = [" ".join(w.text for w in wa[s:e]) for s, e in la]
-    keys_b = [" ".join(w.text for w in wb[s:e]) for s, e in lb]
     entries: List[ReportEntry] = []
-    for tag, i1, i2, j1, j2 in SequenceMatcher(None, keys_a, keys_b, autojunk=False).get_opcodes():
-        if tag == "equal":
-            continue
-        a0 = la[i1][0] if i1 < i2 else (la[i1][0] if i1 < len(la) else len(wa))
-        a1 = la[i2 - 1][1] if i1 < i2 else a0
-        b0 = lb[j1][0] if j1 < j2 else (lb[j1][0] if j1 < len(lb) else len(wb))
-        b1 = lb[j2 - 1][1] if j1 < j2 else b0
+    for a0, a1, b0, b1 in _changed_ranges(wa, la, wb, lb, sync):
         if a0 == a1 or b0 == b1 or (a1 - a0) * (b1 - b0) > MAX_WORD_PAIRS:
             kind = ADDED if a0 == a1 else REMOVED if b0 == b1 else CHANGED
             entries.append(ReportEntry(kind, _page_at(wa, a0, a1), _text(wa, a0, a1),

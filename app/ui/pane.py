@@ -108,6 +108,7 @@ class PdfPane(QFrame):
     point_picked = Signal(int, int, float)   # "Alinhar este trecho com…": (painel, página, y)
     region_picked = Signal(int, int, float, int, float)   # "Alinhar seleções": (painel, pág. início, y, pág. fim, y)
     relayout_requested = Signal(int)         # rolagem contínua: o painel mudou de tamanho
+    page_flip = Signal(int, int)             # uma página por vez: rolou além da borda (painel, +1 / -1)
 
     CACHE_SIZE = 4
     MARGIN = 12
@@ -146,6 +147,10 @@ class PdfPane(QFrame):
         self._cfocus = None
         self._max_size: Optional[Tuple[float, float]] = None
         self.visual_provider = None            # rolagem contínua: página -> áreas da diferença visual
+        self.scope_provider = None             # página -> (ignorada, % cabeçalho, % rodapé) fora da comparação
+        self.wheel_flip = True                 # uma página por vez: a roda do mouse passa de página nas bordas
+        self.land_at_bottom = False            # a próxima página aberta começa pela parte de baixo
+        self._edge_wheel = 0                   # rolagem acumulada contra a borda (1/8 de grau)
 
         self._build_header()
         self._build_view()
@@ -300,7 +305,8 @@ class PdfPane(QFrame):
         self._annotations = tuple(annotations)
         self._blank_text = blank_text
         self._visual = tuple(visual)
-        annot_key = tuple(repr(a) for a in annotations) + (self.selected_id, blank_text, self._visual)
+        self._scope = self._scope_for(page)
+        annot_key = tuple(repr(a) for a in annotations) + (self.selected_id, blank_text, self._visual, self._scope)
         args: RenderArgs = (page, raw_page, tuple(page_hits), current_hit, zoom,
                             tuple(page_diffs), current_diff, annot_key)
         if args == self._args:
@@ -429,7 +435,12 @@ class PdfPane(QFrame):
         diff = d["diff"] if d["diff"] is not None and d["diff"].page == page_no else None
         visual = tuple(self.visual_provider(page_no)) if self.visual_provider is not None else ()
         return (tuple(d["hits"].get(page_no, [])), hit, tuple(d["diffs"].get(page_no, [])), diff,
-                tuple(repr(a) for a in marks), repr(preview), self.selected_id, visual)
+                tuple(repr(a) for a in marks), repr(preview), self.selected_id, visual, self._scope_for(page_no))
+
+    def _scope_for(self, page_no: Optional[int]):
+        if self.scope_provider is None or page_no is None:
+            return None
+        return self.scope_provider(page_no)
 
     def page_image_with_overlays(self, page: fitz.Page, page_no: int, scale: float, dpr: float) -> QImage:
         d = self._cdata
@@ -439,9 +450,12 @@ class PdfPane(QFrame):
             marks = [a for a in marks if a.id != self._preview.id] + [self._preview]
         hits, diffs = d["hits"].get(page_no, []), d["diffs"].get(page_no, [])
         visual = self.visual_provider(page_no) if self.visual_provider is not None else []
-        if not (marks or hits or diffs or visual):
+        scope = self._scope_for(page_no)
+        if not (marks or hits or diffs or visual or scope):
             return image
         image = image.copy()
+        if scope:
+            self._paint_scope(image, page, scope, scale * dpr, dpr)
         if visual:
             self._paint_visual(image, page, visual, scale * dpr, dpr)
         if marks:
@@ -607,8 +621,11 @@ class PdfPane(QFrame):
         if self._preview is not None:
             marks = [a for a in marks if a.id != self._preview.id] + [self._preview]
         visual = getattr(self, "_visual", ())
-        if page_hits or page_diffs or marks or visual:
+        scope = getattr(self, "_scope", None)
+        if page_hits or page_diffs or marks or visual or scope:
             image = image.copy()
+            if scope:
+                self._paint_scope(image, page, scope, scale * dpr, dpr)
             if visual:
                 self._paint_visual(image, page, visual, scale * dpr, dpr)
             if marks:
@@ -634,7 +651,8 @@ class PdfPane(QFrame):
             target = ((r.x0 + r.x1) / 2 * scale, (r.y0 + r.y1) / 2 * scale)
             QTimer.singleShot(0, lambda: self._position_view(target))
         elif page_changed:
-            QTimer.singleShot(0, lambda: self._position_view(None))
+            bottom, self.land_at_bottom = self.land_at_bottom, False
+            QTimer.singleShot(0, lambda: self._position_view(None, bottom))
 
     def _show_blank(self, raw: int, count: int) -> None:
         self._shown_page = None
@@ -707,6 +725,35 @@ class PdfPane(QFrame):
         for mark in marks:
             for rect in mark.rects:
                 painter.drawRect(cls._qrect(rect, matrix, scale).adjusted(-2, -2, 2, 2))
+        painter.end()
+
+    def _paint_scope(self, image: QImage, page: fitz.Page, scope, scale: float, dpr: float) -> None:
+        """Partes fora da comparação: cabeçalho e rodapé ignorados (faixa cinza) ou a página inteira."""
+        ignored, header, footer = scope
+        width, height = image.width(), image.height()
+        painter = QPainter(image)
+        shade = QColor(90, 98, 120, 34)
+        pen = QPen(QColor(90, 98, 120, 150), 1 * dpr, Qt.PenStyle.DashLine)
+        if ignored:
+            painter.fillRect(QRectF(0, 0, width, height), QColor(90, 98, 120, 60))
+            font = QFont(self.font())
+            font.setPointSizeF(font.pointSizeF() * 1.3 * dpr)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.setPen(QColor(60, 66, 85))
+            painter.drawText(QRectF(0, 0, width, height), Qt.AlignmentFlag.AlignCenter,
+                             tr("Página ignorada na comparação"))
+            painter.end()
+            return
+        painter.setPen(pen)
+        if header:
+            y = height * header / 100
+            painter.fillRect(QRectF(0, 0, width, y), shade)
+            painter.drawLine(QPointF(0, y), QPointF(width, y))
+        if footer:
+            y = height * (1 - footer / 100)
+            painter.fillRect(QRectF(0, y, width, height - y), shade)
+            painter.drawLine(QPointF(0, y), QPointF(width, y))
         painter.end()
 
     @classmethod
@@ -1145,11 +1192,12 @@ class PdfPane(QFrame):
             cursor = Qt.CursorShape.CrossCursor
         self.surface.setCursor(cursor)
 
-    def _position_view(self, target: Optional[Tuple[float, float]]) -> None:
+    def _position_view(self, target: Optional[Tuple[float, float]], bottom: bool = False) -> None:
         self._programmatic = True
         try:
             if target is None:
-                self.scroll.verticalScrollBar().setValue(0)
+                bar = self.scroll.verticalScrollBar()
+                bar.setValue(bar.maximum() if bottom else 0)
                 self.scroll.horizontalScrollBar().setValue(0)
             else:
                 margin_y = int(self.scroll.viewport().height() * 0.35)
@@ -1185,7 +1233,34 @@ class PdfPane(QFrame):
         ):
             self.zoom_step.emit(1 if event.angleDelta().y() > 0 else -1)
             return True
+        if obj is self.scroll.viewport() and event.type() == QEvent.Type.Wheel and self._wheel_at_edge(event):
+            return True
         return super().eventFilter(obj, event)
+
+    EDGE_WHEEL = 120    # um "clique" da roda contra a borda passa de página
+
+    def _wheel_at_edge(self, event) -> bool:
+        """Uma página por vez: rolar além do fim (ou do início) da página passa para a seguinte."""
+        if self.continuous or not self.wheel_flip or self._shown_page is None:
+            self._edge_wheel = 0
+            return False
+        dy = event.angleDelta().y() or event.pixelDelta().y()
+        if dy == 0 or event.modifiers() & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier):
+            return False
+        bar = self.scroll.verticalScrollBar()
+        at_bottom = bar.value() >= bar.maximum()
+        at_top = bar.value() <= bar.minimum()
+        if (dy < 0 and not at_bottom) or (dy > 0 and not at_top):
+            self._edge_wheel = 0
+            return False       # ainda há página para rolar
+        if (self._edge_wheel < 0) != (dy < 0):
+            self._edge_wheel = 0
+        self._edge_wheel += dy
+        if abs(self._edge_wheel) < self.EDGE_WHEEL:
+            return True
+        self._edge_wheel = 0
+        self.page_flip.emit(self.index, +1 if dy < 0 else -1)
+        return True
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
